@@ -1,9 +1,12 @@
 """流程一：CWA F-D0047-091 一週預報 → 清洗 → Upsert 至 Supabase → 告警推播。
 
 用法：
-    python scripts/fetch_and_store.py                       # 正式執行 (打 API、寫 DB、推播)
+    python scripts/fetch_and_store.py                       # 正式執行 (打 API、寫 DB)
     python scripts/fetch_and_store.py --dry-run             # 打 API 但不寫 DB、不推播
     python scripts/fetch_and_store.py --dry-run --from-sample   # 讀 samples/ 離線測試
+
+執行來源由 GitHub Actions 的 GITHUB_EVENT_NAME 判斷：schedule 為排程，其餘（workflow_dispatch、本機）
+視為手動。只有排程會推播告警；手動與本機只更新資料。要在本機測試推播，可設 GITHUB_EVENT_NAME=schedule。
 """
 import argparse
 import json
@@ -29,7 +32,11 @@ TZ = timezone(timedelta(hours=8))  # 台灣時間 (UTC+8)，不依賴系統時�
 ALERT_RAIN = 60
 ALERT_MIN_TEMP = 12
 ALERT_MAX_TEMP = 35
-ALERT_WINDOW_HOURS = 6  # 與 cron 間隔一致：時段起點落在 (現在, 現在+6h] 才告警，每時段只通知一次
+# 排程時槽：台灣時間 02:45 起每 3 小時。⚠️ 須與 .github/workflows/weather_worker.yml 的 cron `45 */3 * * *` 一致。
+SLOT_ANCHOR = (2, 45)
+SLOT_INTERVAL = timedelta(hours=3)
+ALERT_WINDOW = SLOT_INTERVAL  # 時段起點落在 (時槽, 時槽+3h] 才告警，每時段只通知一次
+STATUS_TABLE = "pipeline_status"
 
 # ElementName -> (資料表欄位, ElementValue 鍵名, 轉型函式)
 def _num(v): return float(v)
@@ -116,10 +123,19 @@ def parse(raw: dict) -> list[dict]:
     return records
 
 
-def is_alert(row: dict, now: datetime) -> bool:
-    """即將開始的時段 (起點在 (now, now+6h])，且符合降雨/低溫/高溫任一條件。"""
+def current_slot(now: datetime) -> datetime:
+    """對齊到「最近一個已經過去的排程時槽」。
+
+    以時槽而非實際執行時間算告警視窗，排程被 GitHub 延遲（不到一個間隔）也不會漏發或重複。
+    """
+    anchor = now.replace(hour=SLOT_ANCHOR[0], minute=SLOT_ANCHOR[1], second=0, microsecond=0)
+    return anchor + ((now - anchor) // SLOT_INTERVAL) * SLOT_INTERVAL
+
+
+def is_alert(row: dict, slot: datetime) -> bool:
+    """起點落在 (時槽, 時槽+間隔] 的時段，且符合降雨/低溫/高溫任一條件。"""
     start = datetime.fromisoformat(row["forecast_time_start"])
-    if not (now < start <= now + timedelta(hours=ALERT_WINDOW_HOURS)):
+    if not (slot < start <= slot + ALERT_WINDOW):
         return False
     rain, tmin, tmax = row.get("rain_probability"), row.get("min_temp"), row.get("max_temp")
     return ((rain is not None and rain >= ALERT_RAIN)
@@ -134,39 +150,56 @@ def build_card(rows: list[dict]) -> dict:
         lines.append(f"{r['location_name']} {start:%m/%d %H:%M} 起｜降雨 {r.get('rain_probability')}%｜"
                      f"{r.get('min_temp')}~{r.get('max_temp')}°C")
     return {"cardsV2": [{"cardId": "weather-alert", "card": {
-        "header": {"title": "🔔 天氣告警", "subtitle": f"未來 {ALERT_WINDOW_HOURS} 小時內開始的時段，{len(rows)} 筆符合條件"},
+        "header": {"title": "🔔 天氣告警", "subtitle": f"未來 {int(ALERT_WINDOW.total_seconds() // 3600)} 小時內開始的時段，{len(rows)} 筆符合條件"},
         "sections": [{"widgets": [{"textParagraph": {"text": "<br>".join(lines[:30])}}]}],
     }}]}
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--dry-run", action="store_true", help="不寫入資料庫、不推播")
-    parser.add_argument("--from-sample", action="store_true", help="讀 samples/ 而非呼叫 API")
-    args = parser.parse_args()
+def trigger_type() -> str:
+    """GitHub Actions 的 schedule 事件為排程；其餘（workflow_dispatch、本機）一律視為手動。"""
+    return "schedule" if os.getenv("GITHUB_EVENT_NAME") == "schedule" else "manual"
 
+
+def get_supabase():
+    from supabase import create_client
+    url, key = os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_KEY")
+    if not url or not key:
+        sys.exit("缺少 SUPABASE_URL / SUPABASE_KEY")
+    return create_client(url, key)
+
+
+def record_status(sb, trigger: str, status: str, stamp: str, error: str | None = None) -> None:
+    """更新 pipeline_status。失敗時不動 last_success_at，讓失敗不會鎖住手動更新。
+
+    寫入狀態失敗只警告，不影響主流程（資料更新才是主要任務）。
+    """
+    row = {"trigger_type": trigger, "last_run_at": stamp, "last_status": status, "last_error": error}
+    if status == "success":
+        row["last_success_at"] = stamp
+    try:
+        sb.table(STATUS_TABLE).upsert(row, on_conflict="trigger_type").execute()
+    except Exception as exc:
+        print(f"[警告] 無法更新 {STATUS_TABLE}：{exc}", file=sys.stderr)
+
+
+def run_pipeline(args, sb, trigger: str) -> None:
     raw = (json.loads(SAMPLE_PATH.read_text(encoding="utf-8")) if args.from_sample else fetch_cwa())
     records = parse(raw)
-    now = datetime.now(TZ)
+    slot = current_slot(datetime.now(TZ))
     print(f"解析完成：{len(records)} 列，{len({r['location_name'] for r in records})} 個縣市")
 
-    alerts = [r for r in records if is_alert(r, now)]
+    alerts = [r for r in records if is_alert(r, slot)]
 
     if args.dry_run:
-        print(f"[dry-run] 符合告警 {len(alerts)} 筆（不寫 DB、不推播）")
+        print(f"[dry-run] 排程時槽 {slot:%m/%d %H:%M}，告警視窗 ({slot:%m/%d %H:%M}, {slot + ALERT_WINDOW:%m/%d %H:%M}]，"
+              f"符合告警 {len(alerts)} 筆（不寫 DB、不推播）")
         for r in alerts[:5]:
             print("  ", r["location_name"], r["forecast_time_start"], r.get("rain_probability"),
                   r.get("min_temp"), r.get("max_temp"))
         print("[dry-run] 範例列:", json.dumps(records[0], ensure_ascii=False))
         return
 
-    from supabase import create_client
-    url, key = os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_KEY")
-    if not url or not key:
-        sys.exit("缺少 SUPABASE_URL / SUPABASE_KEY")
-    sb = create_client(url, key)
-
-    # 整批共用同一個 updated_at（新增與更新皆以本次寫入時間為準）
+    # 整批共用同一個 updated_at（新增與更新皆以本次寫入時間為準），並同步寫入 pipeline_status
     stamp = datetime.now(TZ).isoformat()
     for r in records:
         r["updated_at"] = stamp
@@ -174,9 +207,14 @@ def main() -> None:
     # 單次 upsert = 單一交易，前端不會讀到寫一半的批次
     sb.table("weather_forecasts").upsert(
         records, on_conflict="location_name,forecast_time_start,forecast_time_end").execute()
-    print(f"已 upsert {len(records)} 列至 weather_forecasts")
+    print(f"已 upsert {len(records)} 列至 weather_forecasts（來源：{trigger}）")
+    record_status(sb, trigger, "success", stamp)
 
-    # 告警：資料寫入成功後才推播；去重靠 is_alert 的 6 小時起點視窗（見 SPECIFICATION.md §6.1）
+    # 告警：只有排程推播（手動與本機只更新資料，避免重複通知）；資料寫入成功後才推播。
+    # 去重靠 is_alert 的排程時槽視窗（見 SPECIFICATION.md §6.1）
+    if trigger != "schedule":
+        print(f"非排程執行（{trigger}），略過告警推播")
+        return
     if not alerts:
         print("無需推播")
         return
@@ -186,6 +224,23 @@ def main() -> None:
         return
     requests.post(webhook, json=build_card(alerts), timeout=15).raise_for_status()
     print(f"已推播 {len(alerts)} 筆告警")
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--dry-run", action="store_true", help="不寫入資料庫、不推播")
+    parser.add_argument("--from-sample", action="store_true", help="讀 samples/ 而非呼叫 API")
+    args = parser.parse_args()
+
+    trigger = trigger_type()
+    sb = None if args.dry_run else get_supabase()
+    try:
+        run_pipeline(args, sb, trigger)
+    except (Exception, SystemExit) as exc:  # 含 sys.exit("訊息")（缺金鑰、429），記錄失敗後照常結束
+        if sb is not None:
+            reason = str(exc.code) if isinstance(exc, SystemExit) else f"{type(exc).__name__}: {exc}"
+            record_status(sb, trigger, "failed", datetime.now(TZ).isoformat(), reason[:300])
+        raise
 
 
 if __name__ == "__main__":

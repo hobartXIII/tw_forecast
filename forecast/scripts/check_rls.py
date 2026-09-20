@@ -1,6 +1,6 @@
 """驗證 RLS：用前端的公開金鑰 (anon / publishable) 確認「可讀、不可寫」。
 
-需要 .env：SUPABASE_URL、SUPABASE_ANON_KEY (公開金鑰)。
+需要 .env：SUPABASE_URL、SUPABASE_ANON_KEY (公開金鑰)、SUPABASE_KEY (後端金鑰，用於驗證與還原)。
 寫入測試使用不存在於預報中的假資料 (縣市 "__rls_test__")；若 RLS 失效導致寫入成功，
 會用後端金鑰 SUPABASE_KEY 刪除該測試列並回報失敗。
 
@@ -87,6 +87,37 @@ except Exception:
 check("anon 刪除被拒絕", len(test_row()) == 1)
 
 admin.table(TABLE).delete().eq("location_name", TEST_ROW["location_name"]).execute()  # 清除測試列
+
+# 4. pipeline_status（手動更新門檻用）：anon 可讀、不可改、不可刪。
+#    以 schedule 那一列做測試；若 RLS 失效導致被改動，會用後端金鑰還原。
+STATUS = "pipeline_status"
+try:
+    r = anon.table(STATUS).select("*").execute()
+    check("anon 可讀取 pipeline_status", len(r.data) > 0, f"(共 {len(r.data)} 列)")
+except Exception as exc:
+    check("anon 可讀取 pipeline_status", False, f"({exc}) 請先在 Supabase 執行 sql/init_supabase.sql")
+else:
+    def status_row():
+        return admin.table(STATUS).select("*").eq("trigger_type", "schedule").execute().data
+
+    before = status_row()
+    try:
+        anon.table(STATUS).update({"last_error": "hacked"}).eq("trigger_type", "schedule").execute()
+    except Exception:
+        pass
+    after = status_row()
+    check("anon 更新 pipeline_status 被拒絕", after == before)
+    if after != before and before:
+        admin.table(STATUS).upsert(before[0], on_conflict="trigger_type").execute()  # 還原
+
+    try:
+        anon.table(STATUS).delete().eq("trigger_type", "schedule").execute()
+    except Exception:
+        pass
+    deleted = not status_row() and bool(before)
+    check("anon 刪除 pipeline_status 被拒絕", not deleted)
+    if deleted:
+        admin.table(STATUS).upsert(before[0], on_conflict="trigger_type").execute()  # 還原
 
 print()
 print("RLS 驗證通過 ✅" if all(results) else "RLS 驗證失敗 ❌，請檢查 sql/init_supabase.sql 的 policy")

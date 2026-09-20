@@ -2,7 +2,9 @@ name: Taiwan Weather Pipeline (Fetch -> Store)
 
 on:
   schedule:
-    - cron: '0 */6 * * *' # 每 6 小時排程執行一次 (UTC)，台灣時間 02:00 / 08:00 / 14:00 / 20:00
+    # 台灣時間 02:45 起每 3 小時 (UTC 的 00:45 / 03:45 / ... / 21:45)。
+    # ⚠️ fetch_and_store.py 的排程時槽 (SLOT_ANCHOR / SLOT_INTERVAL) 須與此處一致，修改時兩邊一起改。
+    - cron: '45 */3 * * *'
   workflow_dispatch:      # 支援隨時手動點擊執行
 
 permissions:

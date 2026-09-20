@@ -10,6 +10,7 @@ import streamlit as st
 from supabase import Client, create_client
 
 TABLE = "weather_forecasts"
+STATUS_TABLE = "pipeline_status"
 TZ = ZoneInfo("Asia/Taipei")
 TIME_COLUMNS = ["forecast_time_start", "forecast_time_end", "updated_at"]
 MAX_ROWS = 1000  # Supabase 單次查詢上限
@@ -72,3 +73,12 @@ def fetch_forecast(sb: Client, now: datetime) -> pd.DataFrame:
             .gt("forecast_time_end", now.isoformat())
             .order("forecast_time_start").limit(MAX_ROWS).execute().data)
     return _latest_batch(_to_df(rows))
+
+
+def fetch_update_status(sb: Client) -> list[dict]:
+    """讀 pipeline_status（排程、手動各一列）；時間轉為 Asia/Taipei，讀取失敗會拋例外。"""
+    rows = sb.table(STATUS_TABLE).select("*").execute().data
+    for row in rows:
+        for col in ("last_success_at", "last_run_at"):
+            row[col] = pd.to_datetime(row[col], utc=True).tz_convert(TZ) if row.get(col) else None
+    return rows

@@ -14,12 +14,13 @@ from components.charts import RAIN_ALERT, rain_chart, series_chart, temp_trend_c
 from components.format import weather_icon
 from components.map_view import build_map, display_temp
 from components.region_data import ALL_REGIONS, CITY_ORDER, REGIONS, cities_in, region_of
+from components.update_gate import MIN_INTERVAL_MINUTES, evaluate
 
 ALL_CITIES = "全部縣市"
 METRICS = {"最高溫": "max_temp", "最低溫": "min_temp", "平均溫": "avg"}
 
 WORKFLOW_FILE = "weather_worker.yml"
-COOLDOWN_SECONDS = 60
+REFRESH_AFTER_SECONDS = 60  # 觸發更新後，等這麼久自動重整頁面
 
 st.set_page_config(page_title="台灣天氣預報", page_icon="🌤️", layout="wide")
 
@@ -44,12 +45,20 @@ def trigger_update() -> tuple[bool, str]:
     except requests.RequestException as exc:
         return False, f"無法連線至 GitHub：{exc}"
     if resp.status_code == 204:
-        return True, "已觸發更新，約 1~2 分鐘後按「重新載入資料」（更新完成前仍顯示舊資料）"
+        return True, ""
     return False, f"觸發失敗（HTTP {resp.status_code}）：{resp.text[:200]}"
 
 
 def fmt_range(start: pd.Timestamp, end: pd.Timestamp) -> str:
     return f"{start:%m/%d %H:%M} ~ {end:%m/%d %H:%M}"
+
+
+def fmt_last(rows: list[dict] | None, trigger: str) -> str:
+    """某來源（schedule / manual）最後一次成功更新的時間文字。"""
+    for row in rows or []:
+        if row.get("trigger_type") == trigger and row.get("last_success_at") is not None:
+            return f"{row['last_success_at']:%m/%d %H:%M}"
+    return "—"
 
 
 def add_region(df: pd.DataFrame) -> pd.DataFrame:
@@ -59,28 +68,73 @@ def add_region(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+@st.fragment(run_every=1)
+def refresh_countdown() -> None:
+    """觸發更新後倒數，時間到就整頁重跑（重新查資料庫與狀態表；地區/縣市的選擇會保留）。"""
+    left = st.session_state.get("refresh_at", 0) - time.time()
+    if left <= 0:
+        st.session_state.pop("refresh_at", None)
+        st.rerun()
+    st.info(f"已觸發更新，{int(left) + 1} 秒後自動重整頁面…")
+
+
 # ---------- 標題與更新控制 ----------
 head_left, head_right = st.columns([3, 2])
 head_left.title("🌤️ 台灣天氣預報")
+
+configured = bool(secret("SUPABASE_URL") and secret("SUPABASE_ANON_KEY"))
+sb = None
+status_rows = None  # 讀不到就維持 None：不放行手動更新
+if configured:
+    try:
+        sb = db.get_client()
+        status_rows = db.fetch_update_status(sb)
+    except Exception:
+        status_rows = None
+gate = evaluate(status_rows, db.now_taipei())
+counting = "refresh_at" in st.session_state
+
 with head_right:
     btn_a, btn_b = st.columns(2)
-    remaining = COOLDOWN_SECONDS - (time.monotonic() - st.session_state.get("last_dispatch", -1e9))
-    if btn_a.button(f"🔄 立即更新{f'（{int(remaining)} 秒後可再按）' if remaining > 0 else ''}",
-                    disabled=remaining > 0, width="stretch"):
-        ok, msg = trigger_update()
-        if ok:
-            st.session_state["last_dispatch"] = time.monotonic()
-        (st.success if ok else st.error)(msg)
+    clicked = btn_a.button("⏳ 更新中…" if counting else "🔄 立即更新",
+                           disabled=counting or not gate.allowed, width="stretch")
     if btn_b.button("♻️ 重新載入資料", width="stretch"):
         st.rerun()
 
+# 每次執行（含按下按鈕的這一次）開頭都會重新讀取狀態表，所以這裡的 gate 就是按下當下的最新判斷；
+# 通過才呼叫更新。
+if clicked and gate.allowed:
+    ok, msg = trigger_update()
+    if ok:
+        st.session_state["refresh_at"] = time.time() + REFRESH_AFTER_SECONDS
+        st.session_state["pending_since"] = db.now_taipei()
+        st.rerun()  # 重跑後按鈕停用並開始倒數
+    else:
+        st.error(msg)
+elif counting:
+    refresh_countdown()
+elif not gate.allowed:
+    st.info(gate.message)
+
+pending = st.session_state.get("pending_since")
+if pending is not None and not counting:  # 自動重整後，確認剛才觸發的更新是否已完成
+    if gate.last_success is not None and gate.last_success >= pending:
+        st.success("資料已更新完成")
+        st.session_state.pop("pending_since")
+    else:
+        st.info("更新尚未完成，請稍後按「重新載入資料」")
+
+if status_rows is not None:
+    st.caption(f"最近排程更新 {fmt_last(status_rows, 'schedule')}　｜　最近手動更新 {fmt_last(status_rows, 'manual')}"
+               f"　｜　手動更新需間隔 {MIN_INTERVAL_MINUTES} 分鐘")
+
 # ---------- 讀取資料庫（不快取，每次載入都重新查詢） ----------
-if not secret("SUPABASE_URL") or not secret("SUPABASE_ANON_KEY"):
+if not configured:
     st.error("尚未設定 SUPABASE_URL / SUPABASE_ANON_KEY（見 .streamlit/secrets.toml.example）")
     st.stop()
 try:
     with st.spinner("讀取預報資料中…"):
-        sb = db.get_client()
+        sb = sb or db.get_client()
         now = db.now_taipei()
         current = db.fetch_current(sb, now)
         forecast = db.fetch_forecast(sb, now)
