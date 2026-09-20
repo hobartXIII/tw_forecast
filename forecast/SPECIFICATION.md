@@ -93,8 +93,7 @@ flowchart TD
 ![系統總體架構圖 (向量繁中版)](architecture_diagram.svg)
 
 > 💡 **檢視提示**：
-> - 亦可切換檢視高科技概念效果圖：[architecture_diagram.jpg](architecture_diagram.jpg)
-> - 或開啟包含切換功能的網頁：[view_architecture.html](view_architecture.html)
+> - 亦可開啟包含切換功能的網頁：[view_architecture.html](view_architecture.html)
 > - ⚠️ 上述圖檔為 v1.1.0 版本繪製（含「匯出 JSON」與「Web 前端」），與本版架構不一致，需重新繪製。
 
 ---
@@ -466,33 +465,35 @@ conn = psycopg2.connect(st.secrets["SUPABASE_DB_URL"])  # 唯讀角色 + Pooler 
 
 ## 9. 專案目錄與檔案結構藍圖
 
-> **Repo 根目錄約定**：GitHub 只會執行 **repo 根目錄**下的 `.github/workflows/`。本規格書以 `forecast/` 作為 **repo 根目錄**（下圖所有路徑皆相對於它），也就是 GitHub repo 建立在 `forecast/` 資料夾，而非其上層的 `HW1/`。
-> - 若日後 repo 根目錄改為 `HW1/`，則須：① 將 workflow 移至 `HW1/.github/workflows/`；② 每個 `run` 步驟加上 `working-directory: forecast`；③ `cache-dependency-path` 加上 `forecast/` 前綴；④ Streamlit Cloud 的 Main file path 改為 `forecast/streamlit_app/app.py`，`requirements.txt` 亦須位於可被偵測的位置。
+> **Repo 根目錄約定**：GitHub 只會執行 **repo 根目錄**下的 `.github/workflows/`。本專案以 `HW1/` 作為 **repo 根目錄**，專案程式碼與文件全部放在 `forecast/` 子資料夾；`.github/` 與 `.gitignore` 只在根目錄保留一份。因此：
+> - workflow 位於 `HW1/.github/workflows/`，每個 `run` 步驟以 `working-directory: forecast` 執行，`cache-dependency-path` 帶 `forecast/` 前綴。
+> - Streamlit Cloud 的 Main file path 為 `forecast/streamlit_app/app.py`，`requirements.txt` 須位於可被偵測的位置。
 
 ```text
-forecast/
+HW1/                                     # repo 根目錄
 ├── .github/
 │   └── workflows/
-│       └── weather_worker.yml       # 自動排程: 執行流程一
-├── scripts/
-│   ├── fetch_and_store.py           # 🌟 流程一：Python 打 API 取資料存 DB & 告警推播
-│   └── mock_test.py                 # 測試模擬 (模擬 CWA 回傳資料，寫入 Supabase)
-├── streamlit_app/
-│   ├── app.py                       # 🌟 流程二：讀取 Supabase 渲染 Streamlit 儀表板
-│   └── components/
-│       ├── db.py                    # Supabase 唯讀查詢 (supabase-py / psycopg2)
-│       ├── region_data.py           # 縣市 → 分區 (北/中/南/東) 靜態對照表
-│       ├── map_view.py              # Folium 地圖視覺化
-│       └── charts.py                # 氣溫折線圖模組
-├── .streamlit/
-│   └── secrets.toml.example         # 前端 Secrets 範本 (實際 secrets.toml 不得 commit)
-├── sql/
-│   └── init_supabase.sql            # Supabase DDL 建表 + RLS 腳本
-├── .env.example                     # 後端環境變數範本
-├── .gitignore                       # 安全防護清單
-├── requirements.txt                 # 相依套件清單
-├── SPECIFICATION.md                 # 系統規格書 (本文件)
-└── README.md                        # 專案快速上手指引
+│       └── weather_worker.yml           # 自動排程: 執行流程一
+├── .gitignore                           # 安全防護清單（全 repo 唯一一份）
+└── forecast/                            # 專案程式碼與文件
+    ├── scripts/
+    │   ├── fetch_and_store.py           # 🌟 流程一：Python 打 API 取資料存 DB & 告警推播
+    │   └── mock_test.py                 # 測試模擬 (模擬 CWA 回傳資料，寫入 Supabase)
+    ├── streamlit_app/
+    │   ├── app.py                       # 🌟 流程二：讀取 Supabase 渲染 Streamlit 儀表板
+    │   └── components/
+    │       ├── db.py                    # Supabase 唯讀查詢 (supabase-py / psycopg2)
+    │       ├── region_data.py           # 縣市 → 分區 (北/中/南/東) 靜態對照表
+    │       ├── map_view.py              # Folium 地圖視覺化
+    │       └── charts.py                # 氣溫折線圖模組
+    ├── .streamlit/
+    │   └── secrets.toml.example         # 前端 Secrets 範本 (實際 secrets.toml 不得 commit)
+    ├── sql/
+    │   └── init_supabase.sql            # Supabase DDL 建表 + RLS 腳本
+    ├── .env.example                     # 後端環境變數範本
+    ├── requirements.txt                 # 相依套件清單
+    ├── SPECIFICATION.md                 # 系統規格書 (本文件)
+    └── README.md                        # 專案快速上手指引
 ```
 
 ---
@@ -501,7 +502,7 @@ forecast/
 
 | 里程碑 | 項目內容 | 核心對應 | 驗收標準 (Acceptance Criteria) |
 | :---: | :--- | :--- | :--- |
-| **M0** | **建立 GitHub Repo** | 專案結構 | 於 `forecast/` 資料夾初始化 git 並推送至 GitHub（`forecast/` 為 repo 根目錄，見 §9），確認 `.github/workflows/` 位於根目錄。 |
+| **M0** | **建立 GitHub Repo** | 專案結構 | 於 `HW1/` 初始化 git 並推送至 GitHub（`HW1/` 為 repo 根目錄，程式碼在 `forecast/`，見 §9），確認 `.github/workflows/` 位於 repo 根目錄。 |
 | **M1** | **金鑰與環境準備** | 安全配置 | 備妥 CWA API Key、Google Chat Webhook；註冊 Supabase 並建立免費專案取得 URL、`service_role` key、`anon` key；後端 Secrets 設定於 GitHub Secrets 與本地 `.env`。 |
 | **M2** | **資料庫綱要建立** | 儲存層 | 於雲端 Supabase 執行 `init_supabase.sql` 建立 `weather_forecasts` 表與 RLS；以 `anon` key 驗證可讀取、不可寫入。 |
 | **M3** | **流程一實作** | **Python 打 API 存 DB** | （`F-D0047-091` 實際回應結構已於 §3.3 驗證）`fetch_and_store.py` 成功抓取一週預報、清洗入庫，並於即將開始（6 小時內）的時段 PoP $\ge 60\%$ 時推播 Google Chat。 |

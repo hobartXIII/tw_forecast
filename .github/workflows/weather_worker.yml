@@ -1,0 +1,45 @@
+name: Taiwan Weather Pipeline (Fetch -> Store)
+
+on:
+  schedule:
+    - cron: '0 */6 * * *' # 每 6 小時排程執行一次 (UTC)，台灣時間 02:00 / 08:00 / 14:00 / 20:00
+  workflow_dispatch:      # 支援隨時手動點擊執行
+
+permissions:
+  contents: read
+
+concurrency:
+  group: weather-pipeline   # 排程與手動觸發不會同時執行
+  cancel-in-progress: false
+
+jobs:
+  weather-sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: forecast   # repo 根目錄為 HW1/，專案程式碼在 forecast/
+    steps:
+      - name: 檢出專案程式碼
+        uses: actions/checkout@v4
+
+      - name: 安裝 Python 環境
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: forecast/requirements.txt
+
+      - name: 安裝相依套件
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: 【流程一】Python 打 API 取資料存入 DB 並檢查告警
+        env:
+          WEATHER_API_KEY: ${{ secrets.WEATHER_API_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          GOOGLE_CHAT_WEBHOOK: ${{ secrets.GOOGLE_CHAT_WEBHOOK }}
+        run: |
+          python scripts/fetch_and_store.py
