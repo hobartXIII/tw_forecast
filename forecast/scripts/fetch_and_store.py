@@ -166,6 +166,11 @@ def main() -> None:
         sys.exit("缺少 SUPABASE_URL / SUPABASE_KEY")
     sb = create_client(url, key)
 
+    # 整批共用同一個 updated_at（新增與更新皆以本次寫入時間為準）
+    stamp = datetime.now(TZ).isoformat()
+    for r in records:
+        r["updated_at"] = stamp
+
     # 單次 upsert = 單一交易，前端不會讀到寫一半的批次
     sb.table("weather_forecasts").upsert(
         records, on_conflict="location_name,forecast_time_start,forecast_time_end").execute()

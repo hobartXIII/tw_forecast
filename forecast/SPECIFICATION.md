@@ -278,7 +278,7 @@ records.Locations[]                     ← 1 筆 (LocationsName "台灣"，Data
 
 #### 資料表：`weather_forecasts` (預報與歷史存檔)
 
-> **欄位設計原則**：資料表欄位只保留「API 實際有提供的資料」，與 API 回傳取交集；API 沒有提供的資訊（如寫入時間、通知旗標、自增 id）一律不建對應欄位。個別時段 API 給 `"-"` 者，該欄位值為 NULL。
+> **欄位設計原則**：資料表欄位只保留「API 實際有提供的資料」，與 API 回傳取交集；API 沒有提供的資訊（如通知旗標、自增 id）不建對應欄位；唯一例外是系統維運用的 `updated_at`（資料建立/最後更新時間）。個別時段 API 給 `"-"` 者，該欄位值為 NULL。
 ```sql
 CREATE TABLE IF NOT EXISTS public.weather_forecasts (
     location_name VARCHAR(50) NOT NULL,   -- 縣市 (LocationName)
@@ -292,6 +292,7 @@ CREATE TABLE IF NOT EXISTS public.weather_forecasts (
     avg_temp NUMERIC(4, 1),               -- 平均溫度
     rain_probability INTEGER,             -- 12 小時降雨機率 (%)，未取得時無此值 (NULL)
     comfort_index VARCHAR(100),           -- 舒適度
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 資料建立/最後更新時間 (新增時取預設值，更新時由觸發器與程式覆寫)
 
     -- 以「縣市 + 時段」為主鍵，同一縣市與同時段重複寫入即覆蓋 (upsert)
     PRIMARY KEY (location_name, forecast_time_start, forecast_time_end)
@@ -299,6 +300,23 @@ CREATE TABLE IF NOT EXISTS public.weather_forecasts (
 
 -- 索引優化（主鍵已涵蓋 location_name 開頭的查詢）
 CREATE INDEX IF NOT EXISTS idx_weather_forecasts_time ON public.weather_forecasts(forecast_time_start DESC);
+
+-- 既有資料表補欄位（首次建表者可略過；已存在的表會補上，既有列以執行當下時間填入）
+ALTER TABLE public.weather_forecasts
+    ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now();
+
+-- 每次 UPDATE（含 upsert 走到 ON CONFLICT DO UPDATE）自動刷新 updated_at
+CREATE OR REPLACE FUNCTION public.set_updated_at() RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at := now();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_weather_forecasts_updated_at ON public.weather_forecasts;
+CREATE TRIGGER trg_weather_forecasts_updated_at
+    BEFORE UPDATE ON public.weather_forecasts
+    FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
 
 -- RLS 存取控制
 ALTER TABLE public.weather_forecasts ENABLE ROW LEVEL SECURITY;
@@ -331,6 +349,7 @@ CREATE POLICY "Allow anon read only" ON public.weather_forecasts
 3. **資料清洗與結構化**：解析巢狀 `Locations[].Location[].WeatherElement[].Time[]`（見 §3.3），只取用 §3.3 表列的 7 個要素，以 `(縣市, StartTime, EndTime)` 對齊合併成一列（約 22 縣市 × 15 時段 ≈ 330 列）；該時段 API 未給值（如 `"-"`）者轉為 NULL；經緯度與溫度字串轉為數值；並依 §3.4 確認時區為 `+08:00`。
 4. **批量寫入 DB (Upsert)**：
    - 連線至 Supabase 執行 `supabase.table('weather_forecasts').upsert(records, on_conflict='location_name,forecast_time_start,forecast_time_end').execute()`。
+   - 寫入前為整批 `records` 統一加上 `updated_at`（台灣時間 ISO 8601，本次寫入時間）；新增列取此值，既有列走 `ON CONFLICT DO UPDATE` 時一併更新；資料庫端另有 `DEFAULT now()` 與 `BEFORE UPDATE` 觸發器作為保底。
    - 單次 `upsert` 呼叫為單一資料庫交易（全部成功或全部失敗），前端不會讀到只寫入一半的批次。
 5. **條件判斷與 Google Chat 推播**：
    - 篩選條件：任一縣市 `rain_probability >= 60` 或 `min_temp <= 12` 或 `max_temp >= 35`。
