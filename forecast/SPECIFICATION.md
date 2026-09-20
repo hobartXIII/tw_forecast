@@ -709,21 +709,18 @@ HW1/                                     # repo 根目錄
 | :---: | :---: | :--- |
 | M0 | ✅ 完成 | repo：`hobartXIII/tw_forecast`，根目錄 `HW1/` |
 | M1 | ✅ 完成 | CWA、Supabase 金鑰已備妥；推播管道由 Google Chat 改為 **Telegram**（個人 Gmail 無法使用 Google Chat webhook 與 API，官方文件要求 Business/Enterprise Workspace）。`TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` 已設定於本機 `.env` 與 GitHub Secrets（Secrets 為使用者回報，尚未經實際排程推播驗證） |
-| M2 | ✅ 完成 | `weather_forecasts`（含 `updated_at`、觸發器、`Asia/Taipei` 時區）與 `pipeline_status`（排程、手動各一列）皆已建立；`check_rls.py` 已於 2026-09-20 執行，兩張表的驗證全數通過（`anon` 可讀；新增、更新、刪除皆被拒絕），未留下測試殘留 |
-| M3 | ⚠️ 待驗證 | Telegram 推播已實測（手機收到範例訊息）；**告警設定化（第 1 階段）已完成程式與模擬測試**：縣市／條件／發送時段由資料庫設定、W1 判斷視窗、預設不發送。**新增的設定表尚未在 Supabase 執行**，需執行 `init_supabase.sql`、啟用縣市後才會實際推播，屆時再驗證 |
-| M4 | ✅ 完成 | 手動觸發與**自動排程皆已實際成功**：`cron`（台灣時間 02:45 起每 3 小時）於 2026-09-20 20:55 自動觸發（`schedule` 事件，較預定時槽 20:45 延遲約 10 分鐘），成功寫入預報，並更新 `pipeline_status` 的 `schedule` 列（`last_success_at` = 20:56）。目前只觀察到這一次排程，後續時槽尚待觀察 |
-| M5 | ✅ 完成 | 地區／縣市連動篩選、地圖、趨勢圖、明細表格；「立即更新」（20 分鐘間隔、觸發後 60 秒自動重整）程式已完成並以模擬測試驗證，儀表板可正常讀取 `pipeline_status`；**手動更新已於 2026-09-20 21:27 實際驗證**：按下按鈕 → 觸發 `workflow_dispatch`（成功，29 秒）→ 寫入 `pipeline_status` 的 `manual` 列 → 60 秒後自動重整。GitHub 對該 API 的成功狀態碼，文件現列為 200；程式以 204 判斷成功而流程正常，推論目前實際回應為 204（見待辦） |
-| M6 | ✅ 完成 | 已部署至 Streamlit Community Cloud 並正常顯示資料 |
+| M2 | ✅ 完成 | 資料表與函式皆已建立並驗證：`weather_forecasts`（含 `updated_at`、觸發器、`Asia/Taipei` 時區）、`pipeline_status`、`alert_city_settings`、`alert_slot_settings`（`anon` 完全讀不到也寫不了）、`private.admin_credential`（bcrypt 雜湊）與三個驗證／存取函式。`check_rls.py` 13 項全數通過（含兩張告警設定表）；`check_admin_rpc.py` 以真實密碼完整通過：錯誤密碼、空值、NULL、SQL 注入字串皆被拒絕且延遲約 1 秒，正確密碼可讀取與儲存，不合法門檻被資料庫拒絕，不能新增縣市，測試前後設定完全相同。**`init_supabase.sql` 內 `verify_admin` 已改為「無法確定就拒絕」（`IS DISTINCT FROM`）的加強版，尚未在 Supabase 重新執行**（目前部署的舊版運作正常） |
+| M3 | ⚠️ 待驗證 | Telegram 推播已實測（手機收到範例訊息）。告警設定化（第 1 階段）已完成：縣市為主鍵、降雨／低溫／高溫各自的開關與門檻、可選發送時段（08:45／14:45／20:45）、W1 判斷視窗、預設全部縣市關閉、讀不到設定就不發送；單元與流程測試通過，並用真實資料模擬過。設定表已在 Supabase 建立，2026-09-20 23:52 的排程已用新版程式成功執行（該時槽不是發送時段，未發送）。**尚未實際收到過由排程推播的告警**：已把臺中市啟用並將降雨門檻設為 0 作為測試，待 2026-09-21 08:45 的發送時段驗證，驗證後須將門檻改回 60 或關閉該縣市 |
+| M4 | ✅ 完成 | 手動觸發與自動排程皆已實際成功：`cron`（台灣時間 02:45 起每 3 小時）已觀察到兩次自動觸發——2026-09-20 20:55（較時槽 20:45 延遲約 10 分鐘）與 23:52（較時槽 23:45 延遲約 7 分鐘），皆成功寫入預報並更新 `pipeline_status` 的 `schedule` 列（最後為 23:53）。後續時槽（02:45、05:45……）尚待持續觀察 |
+| M5 | ✅ 完成 | 地區／縣市互斥篩選、地圖（提示含平均、最高、最低溫與降雨機率）、趨勢圖、明細與後續時段表格。「立即更新」（20 分鐘間隔、觸發後 60 秒自動重整）已於 2026-09-20 21:27 實際驗證。告警設定：標題列「⚙️ 告警設定」按鈕，登入為小視窗、登入後設定為大視窗；測試涵蓋視窗內容 30 項、視窗開啟接線 26 項，並以真實瀏覽器（Edge）截圖確認標題列與登入視窗，設定視窗以假資料確認排版；資料庫端以真實密碼驗證登入與儲存。**尚未在瀏覽器以真實密碼實際登入並儲存過**（輸入密碼前須將輸入法切為英文） |
+| M6 | ✅ 完成 | 已部署至 Streamlit Community Cloud 並正常顯示資料。**最新版本（告警設定視窗、地圖提示）部署後尚未在雲端實際檢查**；多檔案更新時可能出現舊模組快取的 `ImportError`，於 Manage app 選 Reboot app 即可 |
 
 ### 10.2 待辦
-- **告警設定第 1 階段上線**：在 Supabase 重新執行 `sql/init_supabase.sql`（新增 `alert_city_settings`、`alert_slot_settings`）→ 執行 `python scripts/check_rls.py` 驗證 `anon` 讀不到也寫不了 → 用 SQL 啟用縣市（預設全部關閉，可把某縣市降雨門檻設為 0 以驗證推播）→ 確認下一個發送時段（08:45／14:45／20:45）實際收到訊息。
-- **告警設定第 2 階段上線**（程式與資料庫函式已完成，模擬測試通過；**尚未在 Supabase 執行**）：
-  1. 在 Supabase 重新執行 `sql/init_supabase.sql`（新增 `private.admin_credential` 與兩個函式）。
-  2. `python scripts/make_admin_hash.py --selftest`，把印出的 SQL 貼到 SQL Editor 執行，結果應為 `true`（確認 pgcrypto 接受雜湊格式）。
-  3. `python scripts/make_admin_hash.py`，輸入 12 碼密碼，把印出的 `INSERT` SQL 貼到 SQL Editor 執行。
-  4. `python scripts/check_admin_rpc.py`（輸入密碼）驗證登入、儲存與「設定未被改動」；再到儀表板標題列按「⚙️ 告警設定」實際登入操作一次。
-- **告警設定第 3 階段**（暫緩）：視覺調整（玻璃效果等），分析結論見專案筆記；屆時再決定範圍。
+- **驗證真實告警推播**：2026-09-21 08:45 的發送時段預期收到臺中市的訊息（降雨門檻 0 的測試設定）。驗證後，將臺中市降雨門檻改回 60 或關閉該縣市（可用「⚙️ 告警設定」或 SQL Editor）。
+- **在瀏覽器實際登入「⚙️ 告警設定」並操作一次**（本機與雲端各一次；輸入密碼前先把輸入法切成英文）。
+- **在 Supabase 重新執行 `sql/init_supabase.sql`**，套用 `verify_admin` 的加強版（`IS DISTINCT FROM`）；可重複執行，不影響既有資料。
 - 持續觀察後續排程時槽是否穩定自動觸發，且每次都更新 `pipeline_status` 的 `schedule` 列。
+- **告警設定第 3 階段（暫緩）**：視覺調整（玻璃效果等），分析結論見專案筆記；屆時再決定範圍。
 - （建議，低優先）「立即更新」觸發 GitHub 時，成功條件目前只認 HTTP 204；官方文件現只列 200，按鈕流程實測正常，由此推論目前實際回應為 204（未直接記錄回應碼）。可改為 200 或 204 都算成功，避免 GitHub 日後調整造成誤判「觸發失敗」。
 - 重新繪製 `architecture_diagram.svg`、`sequence_diagram.svg`（仍為 v1.1.0 版本，且尚未反映 Telegram 與告警設定）。
 - 將 workflow 的 `actions/checkout`、`actions/setup-python` 升級，消除 Node.js 20 deprecated 警告。
