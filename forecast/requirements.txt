@@ -1,0 +1,7 @@
+requests
+pandas
+python-dotenv
+supabase
+streamlit
+folium
+streamlit-folium

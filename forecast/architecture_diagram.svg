@@ -1,0 +1,237 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 760" width="100%" height="100%" style="background:#0b1120; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, 'PingFang TC', 'Microsoft JhengHei', sans-serif;">
+  <defs>
+    <!-- 背景網格微光 -->
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1e293b" stroke-width="0.75" opacity="0.6"/>
+    </pattern>
+
+    <!-- 漸層定義 -->
+    <linearGradient id="titleGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#38bdf8"/>
+      <stop offset="50%" stop-color="#818cf8"/>
+      <stop offset="100%" stop-color="#c084fc"/>
+    </linearGradient>
+
+    <linearGradient id="stage1Grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0284c7" stop-opacity="0.2"/>
+      <stop offset="100%" stop-color="#0369a1" stop-opacity="0.05"/>
+    </linearGradient>
+
+    <linearGradient id="stage2Grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#059669" stop-opacity="0.2"/>
+      <stop offset="100%" stop-color="#047857" stop-opacity="0.05"/>
+    </linearGradient>
+
+    <linearGradient id="dbGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1e1b4b"/>
+      <stop offset="100%" stop-color="#0f172a"/>
+    </linearGradient>
+
+    <!-- 發光濾鏡 -->
+    <filter id="glow-cyan" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="6" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+
+    <filter id="cardShadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#000" flood-opacity="0.45"/>
+    </filter>
+
+    <!-- 箭頭標記 -->
+    <marker id="arrow-cyan" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 8 5 L 0 9 z" fill="#38bdf8"/>
+    </marker>
+
+    <marker id="arrow-emerald" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 8 5 L 0 9 z" fill="#34d399"/>
+    </marker>
+
+    <marker id="arrow-amber" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 8 5 L 0 9 z" fill="#fbbf24"/>
+    </marker>
+
+    <marker id="arrow-purple" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 8 5 L 0 9 z" fill="#c084fc"/>
+    </marker>
+  </defs>
+
+  <!-- 背景網格 -->
+  <rect width="100%" height="100%" fill="url(#grid)"/>
+
+  <!-- 頂部標題區 -->
+  <g transform="translate(640, 48)" text-anchor="middle">
+    <text font-size="26" font-weight="800" fill="url(#titleGrad)" letter-spacing="1.5">
+      🌤️ 台灣天氣預報與自動化通報系統 (Taiwan Weather Forecast System)
+    </text>
+    <text y="30" font-size="14" fill="#94a3b8" font-weight="500">
+      系統架構圖與核心資料流程 (System Architecture &amp; Two-Stage Data Pipeline)
+    </text>
+  </g>
+
+  <!-- ==================== 流程一外框容器 ==================== -->
+  <g transform="translate(40, 110)">
+    <rect width="560" height="600" rx="18" fill="url(#stage1Grad)" stroke="#0284c7" stroke-width="1.8" stroke-dasharray="none" filter="url(#cardShadow)"/>
+    <!-- 標籤 Badge -->
+    <rect x="20" y="-14" width="340" height="30" rx="8" fill="#0284c7" filter="url(#cardShadow)"/>
+    <text x="32" y="6" font-size="14" font-weight="700" fill="#ffffff">
+      ⚡ 流程一：Python 打 API 取資料存 DB
+    </text>
+    <text x="540" y="24" font-size="11" fill="#38bdf8" text-anchor="end">Ingestion &amp; Persistence</text>
+
+    <!-- 卡片 1.1：中央氣象署 API -->
+    <g transform="translate(30, 45)" filter="url(#cardShadow)">
+      <rect width="220" height="150" rx="12" fill="#1e293b" stroke="#38bdf8" stroke-width="1.5"/>
+      <circle cx="36" cy="36" r="18" fill="#0369a1"/>
+      <text x="36" y="42" font-size="18" text-anchor="middle">🌤️</text>
+      <text x="64" y="32" font-size="15" font-weight="700" fill="#f8fafc">中央氣象署</text>
+      <text x="64" y="50" font-size="12" font-weight="600" fill="#38bdf8">CWA Open Data API</text>
+      <line x1="20" y1="68" x2="200" y2="68" stroke="#334155" stroke-width="1"/>
+      <text x="24" y="88" font-size="11" fill="#94a3b8">• 資料集：F-C0032-001</text>
+      <text x="24" y="106" font-size="11" fill="#94a3b8">• 36小時 / 一週預報</text>
+      <text x="24" y="124" font-size="11" fill="#94a3b8">• 回傳 JSON (MinT, MaxT, PoP)</text>
+      <text x="24" y="142" font-size="10" fill="#64748b">• 認證：Authorization API Key</text>
+    </g>
+
+    <!-- 流程箭頭 1.1 -> 1.2 -->
+    <path d="M 250 120 L 302 120" stroke="#38bdf8" stroke-width="2.5" fill="none" marker-end="url(#arrow-cyan)"/>
+    <text x="278" y="110" font-size="10" fill="#38bdf8" font-weight="600" text-anchor="middle">GET</text>
+
+    <!-- 卡片 1.2：GitHub Actions + Python 核心腳本 -->
+    <g transform="translate(310, 45)" filter="url(#cardShadow)">
+      <rect width="220" height="150" rx="12" fill="#1e293b" stroke="#818cf8" stroke-width="1.5"/>
+      <circle cx="36" cy="36" r="18" fill="#3730a3"/>
+      <text x="36" y="42" font-size="18" text-anchor="middle">⚙️</text>
+      <text x="64" y="32" font-size="14" font-weight="700" fill="#f8fafc">GitHub Actions</text>
+      <text x="64" y="50" font-size="11" font-weight="600" fill="#818cf8">fetch_and_store.py</text>
+      <line x1="20" y1="68" x2="200" y2="68" stroke="#334155" stroke-width="1"/>
+      <text x="24" y="88" font-size="11" fill="#94a3b8">• 排程：自訂 Cron 排程 / 手動觸發</text>
+      <text x="24" y="106" font-size="11" fill="#94a3b8">• 讀取 GitHub Secrets</text>
+      <text x="24" y="124" font-size="11" fill="#94a3b8">• Pandas 扁平化清洗轉換</text>
+      <text x="24" y="142" font-size="10" fill="#a5b4fc">• 降雨率 ≥ 60% 觸發判定</text>
+    </g>
+
+    <!-- 流程箭頭 1.2 分支 A：告警通知 -->
+    <path d="M 420 195 L 420 260" stroke="#fbbf24" stroke-width="2.2" stroke-dasharray="4,4" fill="none" marker-end="url(#arrow-amber)"/>
+    <text x="430" y="235" font-size="11" fill="#fbbf24" font-weight="600">降雨率 ≥ 60%</text>
+
+    <!-- 卡片 1.3：Google Chat Webhook 手機通知 -->
+    <g transform="translate(310, 270)" filter="url(#cardShadow)">
+      <rect width="220" height="110" rx="12" fill="#1e293b" stroke="#fbbf24" stroke-width="1.5"/>
+      <circle cx="36" cy="32" r="16" fill="#78350f"/>
+      <text x="36" y="38" font-size="16" text-anchor="middle">🔔</text>
+      <text x="62" y="28" font-size="14" font-weight="700" fill="#f8fafc">Google Chat</text>
+      <text x="62" y="44" font-size="11" font-weight="600" fill="#fbbf24">Incoming Webhook</text>
+      <line x1="20" y1="58" x2="200" y2="58" stroke="#334155" stroke-width="1"/>
+      <text x="24" y="76" font-size="11" fill="#fef08a">• Card V2 美觀卡片格式</text>
+      <text x="24" y="94" font-size="11" fill="#94a3b8">📱 手機端即時收到氣象推播</text>
+    </g>
+
+    <!-- 流程箭頭 1.2 分支 B：存入 DB -->
+    <path d="M 370 195 L 370 235 L 200 235 L 200 410" stroke="#38bdf8" stroke-width="2.5" fill="none" marker-end="url(#arrow-cyan)"/>
+    <text x="210" y="325" font-size="11" fill="#38bdf8" font-weight="600">批量寫入 / Upsert</text>
+
+    <!-- 卡片 1.4：資料持久層 DB -->
+    <g transform="translate(30, 420)" filter="url(#cardShadow)">
+      <rect width="500" height="155" rx="14" fill="url(#dbGrad)" stroke="#38bdf8" stroke-width="1.8"/>
+      
+      <!-- Supabase -->
+      <g transform="translate(20, 20)">
+        <rect width="460" height="115" rx="10" fill="#0f172a" stroke="#0ea5e9" stroke-width="1.2"/>
+        <text x="16" y="26" font-size="14" font-weight="700" fill="#38bdf8">🗄️ Supabase (PostgreSQL)</text>
+        <text x="16" y="44" font-size="11" fill="#94a3b8">雲端資料庫 (免費方案)</text>
+        <line x1="16" y1="54" x2="444" y2="54" stroke="#1e293b" stroke-width="1"/>
+        <text x="16" y="72" font-size="11" fill="#cbd5e1">• 資料表：weather_forecasts</text>
+        <text x="16" y="90" font-size="11" fill="#cbd5e1">• 唯一性約束 (防重插入)</text>
+        <text x="16" y="108" font-size="10" fill="#0284c7">• Row Level Security (RLS)</text>
+      </g>
+    </g>
+  </g>
+
+  <!-- ==================== 跨階段連線箭頭 (DB -> 流程二) ==================== -->
+  <path d="M 540 540 C 620 540, 640 230, 715 230" stroke="#34d399" stroke-width="3" fill="none" marker-end="url(#arrow-emerald)" filter="url(#glow-cyan)"/>
+  <rect x="585" y="340" width="100" height="28" rx="6" fill="#064e3b" stroke="#10b981" stroke-width="1"/>
+  <text x="635" y="358" font-size="11" font-weight="700" fill="#6ee7b7" text-anchor="middle">SQL 查詢撈取 ➔</text>
+
+  <!-- ==================== 流程二外框容器 ==================== -->
+  <g transform="translate(680, 110)">
+    <rect width="560" height="600" rx="18" fill="url(#stage2Grad)" stroke="#059669" stroke-width="1.8" stroke-dasharray="none" filter="url(#cardShadow)"/>
+    <!-- 標籤 Badge -->
+    <rect x="20" y="-14" width="350" height="30" rx="8" fill="#059669" filter="url(#cardShadow)"/>
+    <text x="32" y="6" font-size="14" font-weight="700" fill="#ffffff">
+      ✨ 流程二：DB 撈取資料轉 JSON 提供前端
+    </text>
+    <text x="540" y="24" font-size="11" fill="#34d399" text-anchor="end">Serving &amp; Presentation</text>
+
+    <!-- 卡片 2.1：DB 撈取轉換模組 -->
+    <g transform="translate(45, 145)" filter="url(#cardShadow)">
+      <rect width="210" height="150" rx="12" fill="#1e293b" stroke="#34d399" stroke-width="1.5"/>
+      <circle cx="36" cy="36" r="18" fill="#065f46"/>
+      <text x="36" y="42" font-size="18" text-anchor="middle">⚙️</text>
+      <text x="64" y="32" font-size="14" font-weight="700" fill="#f8fafc">資料轉換模組</text>
+      <text x="64" y="50" font-size="11" font-weight="600" fill="#34d399">export_db_to_json.py</text>
+      <line x1="20" y1="68" x2="190" y2="68" stroke="#334155" stroke-width="1"/>
+      <text x="24" y="88" font-size="11" fill="#94a3b8">• 執行最佳化 SQL 查詢</text>
+      <text x="24" y="106" font-size="11" fill="#94a3b8">• 抓取全台最新時段預報</text>
+      <text x="24" y="124" font-size="11" fill="#94a3b8">• 聚合分區一週氣溫趨勢</text>
+      <text x="24" y="142" font-size="10" fill="#6ee7b7">• 序列化結構為標準 JSON</text>
+    </g>
+
+    <!-- 流程箭頭 2.1 -> 2.2 -->
+    <path d="M 255 220 L 305 220" stroke="#34d399" stroke-width="2.5" fill="none" marker-end="url(#arrow-emerald)"/>
+    <text x="280" y="210" font-size="10" fill="#34d399" font-weight="600" text-anchor="middle">導出</text>
+
+    <!-- 卡片 2.2：標準 JSON 資料合約 -->
+    <g transform="translate(315, 145)" filter="url(#cardShadow)">
+      <rect width="210" height="150" rx="12" fill="#1e293b" stroke="#fbbf24" stroke-width="1.5"/>
+      <circle cx="36" cy="36" r="18" fill="#78350f"/>
+      <text x="36" y="42" font-size="18" text-anchor="middle">📄</text>
+      <text x="64" y="32" font-size="14" font-weight="700" fill="#f8fafc">標準 JSON 資料</text>
+      <text x="64" y="50" font-size="11" font-weight="600" fill="#fbbf24">weather_latest.json</text>
+      <line x1="20" y1="68" x2="190" y2="68" stroke="#334155" stroke-width="1"/>
+      <text x="24" y="88" font-size="11" fill="#94a3b8">• locations: [各縣市名稱]</text>
+      <text x="24" y="106" font-size="11" fill="#94a3b8">• min_temp, max_temp, avg</text>
+      <text x="24" y="124" font-size="11" fill="#94a3b8">• rain_probability (PoP)</text>
+      <text x="24" y="142" font-size="10" fill="#fde68a">• 包含經緯度與警告標籤</text>
+    </g>
+
+    <!-- 流程箭頭 2.2 -> 前端兩大展示 -->
+    <path d="M 420 295 L 420 370 L 150 370 L 150 410" stroke="#c084fc" stroke-width="2.5" fill="none" marker-end="url(#arrow-purple)"/>
+    <path d="M 420 370 L 410 370 L 410 410" stroke="#38bdf8" stroke-width="2.5" fill="none" marker-end="url(#arrow-cyan)"/>
+    <text x="285" y="362" font-size="11" fill="#cbd5e1" font-weight="600" text-anchor="middle">前端直接消費 JSON (無需直接連線 DB)</text>
+
+    <!-- 卡片 2.3A：Streamlit 互動儀表板 -->
+    <g transform="translate(30, 420)" filter="url(#cardShadow)">
+      <rect width="240" height="155" rx="12" fill="#1e293b" stroke="#c084fc" stroke-width="1.5"/>
+      <circle cx="34" cy="34" r="16" fill="#581c87"/>
+      <text x="34" y="40" font-size="16" text-anchor="middle">📊</text>
+      <text x="60" y="30" font-size="14" font-weight="700" fill="#f8fafc">Streamlit 互動儀表板</text>
+      <text x="60" y="46" font-size="11" font-weight="600" fill="#c084fc">streamlit_app/app.py</text>
+      <line x1="16" y1="58" x2="224" y2="58" stroke="#334155" stroke-width="1"/>
+      <text x="16" y="78" font-size="11" fill="#cbd5e1">🗺️ Folium 台灣氣象地圖 (色階標籤)</text>
+      <text x="16" y="98" font-size="11" fill="#cbd5e1">📈 一週最高/最低溫雙折線圖</text>
+      <text x="16" y="118" font-size="11" fill="#cbd5e1">📋 下拉選擇分區與詳細資料表</text>
+      <text x="16" y="138" font-size="10" fill="#e9d5ff">適合教學演練、深度資料分析</text>
+    </g>
+
+    <!-- 卡片 2.3B：輕量 Web 靜態前端 -->
+    <g transform="translate(290, 420)" filter="url(#cardShadow)">
+      <rect width="240" height="155" rx="12" fill="#1e293b" stroke="#38bdf8" stroke-width="1.5"/>
+      <circle cx="34" cy="34" r="16" fill="#0369a1"/>
+      <text x="34" y="40" font-size="16" text-anchor="middle">🌐</text>
+      <text x="60" y="30" font-size="14" font-weight="700" fill="#f8fafc">輕量即時 Web 網頁</text>
+      <text x="60" y="46" font-size="11" font-weight="600" fill="#38bdf8">HTML5 + CSS + Vanilla JS</text>
+      <line x1="16" y1="58" x2="224" y2="58" stroke="#334155" stroke-width="1"/>
+      <text x="16" y="78" font-size="11" fill="#cbd5e1">⚡ fetch('weather_latest.json')</text>
+      <text x="16" y="98" font-size="11" fill="#cbd5e1">🎨 玻璃擬態 (Glassmorphism) 卡片</text>
+      <text x="16" y="118" font-size="11" fill="#cbd5e1">🚀 零成本直接託管於 GitHub Pages</text>
+      <text x="16" y="138" font-size="10" fill="#bae6fd">手機/電腦隨開即看，反應極速</text>
+    </g>
+  </g>
+
+  <!-- 底部微註解 -->
+  <g transform="translate(640, 735)" text-anchor="middle">
+    <text font-size="11" fill="#64748b">
+      © 2026 Taiwan Weather Forecast System • 專案架構解耦設計：前端僅依賴 JSON 資料合約，後端專注於 API 擷取、持久化與告警
+    </text>
+  </g>
+</svg>
