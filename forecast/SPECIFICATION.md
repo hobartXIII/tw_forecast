@@ -405,7 +405,7 @@ jobs:
       - name: 安裝相依套件
         run: |
           pip install --upgrade pip
-          pip install -r requirements.txt
+          pip install -r ../requirements.txt
 
       - name: 【流程一】Python 打 API 取資料存入 DB 並檢查告警
         env:
@@ -485,7 +485,7 @@ conn = psycopg2.connect(st.secrets["SUPABASE_DB_URL"])  # 唯讀角色 + Pooler 
 1. 將 repo 推送至 GitHub（`HW1/` 為 repo 根目錄，見 §9）。
 2. 於 [Streamlit Community Cloud](https://streamlit.io/cloud) 連結 GitHub 帳號，選擇此 repo、分支 `main`，**Main file path** 設為 `forecast/streamlit_app/app.py`。
 3. 於 **Advanced settings → Secrets** 貼上 §4.2 所列前端 Secrets（TOML 格式）。
-4. 相依套件由 `forecast/requirements.txt` 提供（Streamlit Cloud 會在主程式檔所在目錄往上尋找 `requirements.txt`，若偵測不到，可在部署設定中指定或於 repo 根目錄放一份）（需包含 `streamlit`、`supabase`、`pandas`、`folium`、`streamlit-folium`、`requests`；使用方案 B 另加 `psycopg2-binary`）。
+4. 相依套件由 **repo 根目錄**的 `requirements.txt` 提供（Streamlit Cloud 只會在主程式檔所在目錄與 repo 根目錄尋找，放在 `forecast/` 會偵測不到，導致 `ModuleNotFoundError`）（需包含 `streamlit`、`supabase`、`pandas`、`folium`、`streamlit-folium`、`requests`；使用方案 B 另加 `psycopg2-binary`）。
 5. 部署後，程式碼 push 至 `main` 會自動重新部署；資料更新則由 GitHub Actions 寫入 Supabase，無需重新部署。
 
 > 不使用 GitHub Pages，前端網址由 Streamlit Community Cloud 提供（`*.streamlit.app`）。
@@ -496,7 +496,7 @@ conn = psycopg2.connect(st.secrets["SUPABASE_DB_URL"])  # 唯讀角色 + Pooler 
 
 > **Repo 根目錄約定**：GitHub 只會執行 **repo 根目錄**下的 `.github/workflows/`。本專案以 `HW1/` 作為 **repo 根目錄**，專案程式碼與文件全部放在 `forecast/` 子資料夾；`.github/` 與 `.gitignore` 只在根目錄保留一份。因此：
 > - workflow 位於 `HW1/.github/workflows/`，每個 `run` 步驟以 `working-directory: forecast` 執行，`cache-dependency-path` 帶 `forecast/` 前綴。
-> - Streamlit Cloud 的 Main file path 為 `forecast/streamlit_app/app.py`，`requirements.txt` 須位於可被偵測的位置。
+> - Streamlit Cloud 的 Main file path 為 `forecast/streamlit_app/app.py`，`requirements.txt` 放在 repo 根目錄（全 repo 唯一一份，workflow 以 `../requirements.txt` 引用）。
 
 ```text
 HW1/                                     # repo 根目錄
@@ -504,6 +504,7 @@ HW1/                                     # repo 根目錄
 │   └── workflows/
 │       └── weather_worker.yml           # 自動排程: 執行流程一
 ├── .gitignore                           # 安全防護清單（全 repo 唯一一份）
+├── requirements.txt                     # 相依套件清單（須在根目錄，供 Streamlit Cloud 偵測）
 └── forecast/                            # 專案程式碼與文件
     ├── scripts/
     │   ├── fetch_and_store.py           # 🌟 流程一：Python 打 API 取資料存 DB & 告警推播
@@ -520,7 +521,6 @@ HW1/                                     # repo 根目錄
     ├── sql/
     │   └── init_supabase.sql            # Supabase DDL 建表 + RLS 腳本
     ├── .env.example                     # 後端環境變數範本
-    ├── requirements.txt                 # 相依套件清單
     ├── SPECIFICATION.md                 # 系統規格書 (本文件)
     └── README.md                        # 專案快速上手指引
 ```

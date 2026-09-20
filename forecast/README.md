@@ -8,7 +8,7 @@
    ```powershell
    python -m venv .venv
    .venv\Scripts\Activate.ps1
-   pip install -r requirements.txt
+   pip install -r ../requirements.txt   # requirements.txt 位於 repo 根目錄
    ```
 2. 建立後端金鑰檔：複製 `.env.example` 為 `.env`，填入 `WEATHER_API_KEY` 等值（`.env` 不會被 commit）。
 3. 驗證氣象署 API 並存下範例回應：
