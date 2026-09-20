@@ -10,7 +10,7 @@
 ## 功能
 
 - **後端**：GitHub Actions 於台灣時間 02:45 起每 3 小時（02:45、05:45、08:45……）自動執行，也可手動觸發；抓取預報、清洗後 upsert 至 Supabase，記錄 `updated_at`，並把最後成功更新時間寫入 `pipeline_status`。
-- **告警**：只有排程會推播 Telegram，且只在你啟用的發送時段（08:45、14:45、20:45）發送；**預設所有縣市關閉（不發送）**。每個縣市可各自設定降雨／低溫／高溫三個條件的開關與門檻（預設 60％／12°C／35°C）。手動更新只更新資料、不推播。設定存在資料庫，`anon` 讀不到也寫不了；目前用 Supabase SQL Editor 調整（見下方「啟用告警」），之後會提供需輸入密碼的設定頁面。
+- **告警**：只有排程會推播 Telegram，且只在你啟用的發送時段（08:45、14:45、20:45）發送；**預設所有縣市關閉（不發送）**。每個縣市可各自設定降雨／低溫／高溫三個條件的開關與門檻（預設 60％／12°C／35°C）。手動更新只更新資料、不推播。設定存在資料庫，`anon` 讀不到也寫不了；可用儀表板最下方需輸入管理者密碼的「⚙️ 告警設定」面板調整，也可以用 Supabase SQL Editor（見下方「啟用告警」）。
 - **前端**：地區／縣市互斥篩選（選其一會清除另一個）；重點摘要；Folium 地圖（標記顯示溫度，滾輪縮放已關閉，以 ＋／－ 按鈕縮放）；氣溫與降雨機率趨勢圖（全台依地區、地區依縣市各一種顏色，氣象署未提供的降雨機率補 0 並以空心點標示）；明細表格與「後續時段」（每縣市目前時段之後 2 個時段）；天氣圖示區分日夜；「立即更新」按鈕：距上次成功更新（排程或手動，以 `pipeline_status` 為準）滿 20 分鐘才可按，觸發後 60 秒自動重整頁面；排程不受此限制。
 
 ## 目錄結構
@@ -60,13 +60,19 @@ HW1/
    UPDATE public.alert_slot_settings SET enabled = false WHERE slot = '14:45';                  -- 不在 14:45 發送
    ```
    設定在下一個排程時槽生效。判斷視窗為「本次發送時槽到下一個啟用的發送時槽之前」，含進行中的預報時段（訊息標示進行中／即將開始）。
-7. 試跑流程一（不寫入資料庫、不推播）：
+7. 管理者密碼與設定面板（一次性設定）：
+   1. 在 Supabase SQL Editor 執行 `sql/init_supabase.sql`（會建立 `private` schema、密碼表與兩個驗證函式）。
+   2. 相容性檢查：`pip install bcrypt`（只在本機使用，不在 `requirements.txt`），執行 `python scripts/make_admin_hash.py --selftest`，把印出的 SQL 貼到 SQL Editor 執行，結果應為 `true`。
+   3. 產生密碼雜湊：執行 `python scripts/make_admin_hash.py`，輸入 12 碼以上、大小寫加數字的隨機密碼（輸入時不顯示、不會存檔），把印出的 `INSERT` SQL 貼到 SQL Editor 執行。**不要把密碼明文貼進 SQL Editor。**
+   4. 驗證：`python scripts/check_admin_rpc.py`（輸入密碼）；再到儀表板最下方展開「⚙️ 告警設定（管理者）」實際登入。若顯示密碼錯誤，可用 `python scripts/make_admin_hash.py --verify`（貼上資料庫裡的 `password_hash`、輸入密碼）在本機分辨是「密碼輸入不一致」還是「雜湊本身有問題」；`getpass` 在某些終端機不支援貼上，請手動輸入密碼。
+   5. 忘記密碼：重新執行第 3 步寫入新的雜湊值即可（頁面上沒有改密碼功能）。
+8. 試跑流程一（不寫入資料庫、不推播）：
    ```powershell
    python scripts/fetch_and_store.py --dry-run                 # 打 API
    python scripts/fetch_and_store.py --dry-run --from-sample   # 讀 samples/ 離線測試
    python scripts/fetch_and_store.py                           # 正式：寫入 Supabase（本機視為手動，不推播；要測推播可設 GITHUB_EVENT_NAME=schedule）
    ```
-8. 前端本機執行：複製 `.streamlit/secrets.toml.example` 為 `.streamlit/secrets.toml`，填入 `SUPABASE_URL` 與 `SUPABASE_ANON_KEY`（**只放 `anon` key，不可放 `service_role`**），再啟動：
+9. 前端本機執行：複製 `.streamlit/secrets.toml.example` 為 `.streamlit/secrets.toml`，填入 `SUPABASE_URL` 與 `SUPABASE_ANON_KEY`（**只放 `anon` key，不可放 `service_role`**），再啟動：
    ```powershell
    streamlit run streamlit_app/app.py         # http://localhost:8501
    ```
@@ -86,6 +92,7 @@ HW1/
 | 現象 | 原因與處理 |
 | :--- | :--- |
 | 啟用了縣市卻收不到告警 | 依序確認：① 已在 Supabase 執行新版 `init_supabase.sql`；② 該縣市 `enabled = true`；③ 目前排程時槽在啟用的發送時段（08:45／14:45／20:45）；④ 條件有符合（可暫時把降雨門檻設為 0 測試）；⑤ GitHub Secrets 有 `TELEGRAM_BOT_TOKEN`、`TELEGRAM_CHAT_ID`。日誌會寫明略過的原因。 |
+| 告警設定面板登入時顯示「設定功能尚未啟用」 | 資料庫函式不存在：請在 Supabase 執行新版 `sql/init_supabase.sql`。若顯示「密碼錯誤」但確定密碼正確，代表還沒寫入雜湊值（README 上方第 7 步的第 3 點）。 |
 | 「立即更新」按鈕是灰的 | 距上次成功更新不滿 20 分鐘（畫面會顯示還需等幾分鐘），或讀不到 `pipeline_status`（未執行新的 SQL、資料庫連線問題）而一律不放行。排程不受影響。 |
 | `ModuleNotFoundError: streamlit_folium` | Streamlit Cloud 找不到 `requirements.txt`。它只找主程式所在目錄與 repo 根目錄，須放在根目錄。 |
 | 「尚未設定 SUPABASE_URL / SUPABASE_ANON_KEY」 | 雲端要在 Secrets 設定；本機要建立 `.streamlit/secrets.toml`（不會被 commit）。 |

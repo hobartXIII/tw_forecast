@@ -1,7 +1,7 @@
 # 台灣天氣預報與自動化通報系統 (Taiwan Weather Forecast System)
 # 系統規格書 (System Specification Document)
 
-- **版本**: `v1.7.0`
+- **版本**: `v1.8.0`
 - **狀態**: `Implemented: 後端排程與 Streamlit 前端皆已上線運作（見 §10 進度）`
 - **文件路徑**: `forecast/SPECIFICATION.md`
 - **核心流程規範**:
@@ -404,8 +404,24 @@ REVOKE ALL ON public.alert_slot_settings FROM anon, authenticated;
 
 - **預設不發送**：22 縣市預設 `enabled = false`，要收哪個縣市的告警就把它啟用；勾選後直接套用標準條件（三個條件全開、門檻 60／12／35）。
 - **存取權限**：RLS 不建立任何 policy，並撤銷 `anon`、`authenticated` 的權限，所以前端**完全讀不到、也寫不了**（設定內容不公開）。只有排程腳本以 `service_role` 讀取。
-- **調整方式**：第 1 階段以 Supabase SQL Editor 調整（範例見 `sql/init_supabase.sql` 檔尾）；第 2 階段將提供需輸入管理者密碼的設定頁面（密碼雜湊存放於 `private` schema，由資料庫函式驗證），見 §10.2。
+- **調整方式**：可用 Supabase SQL Editor 直接調整（範例見 `sql/init_supabase.sql` 檔尾），或使用儀表板最下方需輸入管理者密碼的「告警設定」面板（見 §8.1 第 8 點）。
 - 縣市名稱須與氣象署 `LocationName` 一致（「臺」而非「台」）；`init_supabase.sql` 已寫入 22 縣市。
+
+#### 管理者密碼與設定函式（`private.admin_credential`、`admin_get_alert_settings`、`admin_save_alert_settings`）
+
+管理者設定面板的密碼驗證**在資料庫內進行**，前端與程式碼裡都沒有密碼或雜湊值：
+
+| 項目 | 設計 |
+|---|---|
+| 密碼表 | `private.admin_credential`（`id = 1` 單列、`password_hash`）。放在 `private` schema，**不對 API 開放**；RLS 不建 policy，並撤銷 `PUBLIC`／`anon`／`authenticated` 的所有權限 |
+| 雜湊 | **bcrypt**（`$2a$` 格式，cost 12，加鹽），由 `pgcrypto` 的 `crypt()` 比對。雜湊值由本機腳本 `scripts/make_admin_hash.py` 產生，密碼本身不會出現在資料庫工具的查詢紀錄或任何檔案 |
+| 驗證函式 | `private.verify_admin(密碼)`：密碼錯誤、空值、NULL、尚未設定雜湊，**一律延遲 1 秒後拒絕**（錯誤訊息 `invalid_password`），讓連續猜測變慢；不做失敗次數鎖定，避免他人故意失敗把管理者鎖在外面 |
+| 讀取函式 | `admin_get_alert_settings(密碼)`：密碼正確才回傳兩張設定表的內容 |
+| 儲存函式 | `admin_save_alert_settings(密碼, 縣市設定, 時段設定)`：密碼正確才寫入；**只更新既有的縣市與時段，不能新增或刪除**；數值範圍由資料表 CHECK 把關；兩張表在同一個交易內更新，失敗全部回復 |
+| 權限 | 兩個函式皆 `SECURITY DEFINER`、`search_path` 設為空並使用完整名稱；只授權 `anon` 執行（`PUBLIC` 預設權限已撤銷）。`anon` 只能「呼叫函式」，不能直接讀寫任何設定表或密碼表 |
+| 設定／更換密碼 | 在 SQL Editor 執行 `INSERT INTO private.admin_credential (id, password_hash) VALUES (1, '<雜湊值>') ON CONFLICT (id) DO UPDATE ...`；忘記密碼時同樣重新寫入新的雜湊值，頁面上不提供改密碼功能。登入失敗時可用 `make_admin_hash.py --verify` 在本機比對密碼與資料庫裡的雜湊 |
+
+**限制與風險**：任何人拿到 `anon` 金鑰都能直接呼叫這兩個函式猜密碼，防禦靠慢速雜湊、失敗延遲與足夠長的密碼（本專案採 12 碼隨機混合，被猜中的影響僅限於修改告警設定，取不到任何金鑰或預報資料）；密碼是函式參數，理論上可能出現在資料庫日誌，Supabase 預設不記錄參數值（未實際驗證）。
 
 ---
 
@@ -579,6 +595,18 @@ jobs:
    - 頁面上另顯示「最近排程更新」與「最近手動更新」時間。
    - **已知的競爭情形**：判斷通過到 `pipeline_status` 實際更新約需 30～60 秒，這段時間內多人同時按仍會通過檢查。workflow 的 `concurrency` 最多保留一個執行中加一個排隊中，因此最多多跑 1 次；手動不推播、氣象署用量充裕，屬可接受。
    - 只更新資料，不提供修改排程週期的功能。
+8. **告警設定面板**（管理者；頁面最下方「⚙️ 告警設定（管理者）」展開區塊）：
+   - **未登入只有密碼輸入框**，看不到任何設定內容（設定表對 `anon` 完全封閉，只能經由驗證密碼的資料庫函式讀取，見 §5.1）；輸入密碼後由資料庫函式 `admin_get_alert_settings` 驗證，密碼錯誤顯示「密碼錯誤」，且不透露任何其他資訊；連續失敗越多次，前端額外等待越久（最多 5 秒，加上資料庫端每次 1 秒）。
+   - **登入後**：
+     - 「發送時段」三個勾選（08:45、14:45、20:45），視窗為「該時段到下一個勾選時段之前」。
+     - 「縣市設定」可編輯表格（22 縣市，依北→中→南→東→離島排序）：`啟用`、`降雨`＋`降雨門檻 (%)`、`低溫`＋`低溫門檻 (°C)`、`高溫`＋`高溫門檻 (°C)`；縣市欄不可編輯，數值有範圍限制。
+     - 按鈕：**💾 儲存**（寫入資料庫）、**全部啟用／全部關閉**（只改表格，仍需按儲存）、**重新載入（放棄未儲存的修改）**、**登出**。
+     - 沒有啟用任何縣市時顯示「尚未啟用任何縣市，不會發送告警」；儲存後提示「設定會在下一個發送時段生效」。
+   - **儲存前檢查**：前端驗證（門檻範圍、整數、不可空白、縣市不重複）不過就不呼叫資料庫；資料庫另有 CHECK 把關。
+   - **密碼處理**：密碼只在本次連線的伺服器記憶體（`st.session_state`），不寫入日誌、不顯示；錯誤訊息一律遮蔽密碼；登入框使用 `clear_on_submit`。重新整理頁面即登出。
+   - **閒置逾時**：超過 15 分鐘沒有操作，**下一次操作**就會登出並要求重新登入（不做背景計時，畫面上已顯示的內容需重新整理才會消失）。儲存時若密碼已失效（例如管理者在資料庫換了密碼），會登出並提示重新登入，不寫入。
+   - **不影響儀表板**：面板以 `st.fragment` 隔離，編輯設定只重跑面板本身，不會重新載入地圖、圖表或資料庫查詢。
+   - 資料層在 `streamlit_app/components/admin.py`（呼叫資料庫函式、驗證、轉換）；本階段沒有新增任何 Streamlit Secrets（沿用 `anon` 金鑰）。
 
 ### 8.2 資料庫連線方式（擇一）
 
@@ -636,6 +664,8 @@ HW1/                                     # repo 根目錄
     │   ├── check_cwa_api.py             # 驗證 CWA API 並存下範例回應到 samples/
     │   ├── check_rls.py                 # 驗證 RLS：anon 可讀不可寫、service_role 可寫
     │   ├── alert_rules.py               # 告警規則（讀取設定後判斷：發送時段、視窗、條件；純函式）
+    │   ├── make_admin_hash.py           # 本機產生管理者密碼的 bcrypt 雜湊（只在本機使用，需 pip install bcrypt）
+    │   ├── check_admin_rpc.py           # 驗證管理者設定功能：錯誤密碼被擋、登入、儲存、設定未被改動
     │   ├── notifier.py                  # Telegram 推播（訊息組合、跳脫、400 重送、token 不外洩）
     │   ├── get_telegram_chat_id.py      # 查詢 TELEGRAM_CHAT_ID（token 只讀本機 .env）
     │   └── test_notify.py               # 傳範例告警到 Telegram，確認推播設定與格式
@@ -643,6 +673,7 @@ HW1/                                     # repo 根目錄
     │   ├── app.py                       # 🌟 流程二：讀取 Supabase 渲染 Streamlit 儀表板
     │   └── components/
     │       ├── db.py                    # Supabase 唯讀查詢（不快取；只取最新批次）
+    │       ├── admin.py                 # 告警設定面板的資料層（呼叫資料庫函式、驗證、密碼遮蔽）
     │       ├── region_data.py           # 縣市 → 分區 (北/中/南/東/離島) 靜態對照表
     │       ├── map_view.py              # Folium 地圖視覺化（標記顯示溫度、關閉滾輪縮放、可標出被選縣市）
     │       ├── charts.py                # 氣溫／降雨機率趨勢圖（單一縣市與多系列）
@@ -686,13 +717,19 @@ HW1/                                     # repo 根目錄
 
 ### 10.2 待辦
 - **告警設定第 1 階段上線**：在 Supabase 重新執行 `sql/init_supabase.sql`（新增 `alert_city_settings`、`alert_slot_settings`）→ 執行 `python scripts/check_rls.py` 驗證 `anon` 讀不到也寫不了 → 用 SQL 啟用縣市（預設全部關閉，可把某縣市降雨門檻設為 0 以驗證推播）→ 確認下一個發送時段（08:45／14:45／20:45）實際收到訊息。
-- **告警設定第 2 階段**：管理者設定頁面（點擊後輸入密碼；密碼雜湊存於 `private` schema，由資料庫函式 `admin_get_alert_settings` / `admin_save_alert_settings` 以 `pgcrypto` 驗證，密碼錯誤延遲 1 秒；設定內容登入後才讀得到；需在頁面新增 22 縣市可編輯表格、「全部啟用／全部關閉」按鈕與三個發送時段勾選）。密碼為 12 碼隨機，雜湊值由本機腳本產生後手動寫入資料庫。
+- **告警設定第 2 階段上線**（程式與資料庫函式已完成，模擬測試通過；**尚未在 Supabase 執行**）：
+  1. 在 Supabase 重新執行 `sql/init_supabase.sql`（新增 `private.admin_credential` 與兩個函式）。
+  2. `python scripts/make_admin_hash.py --selftest`，把印出的 SQL 貼到 SQL Editor 執行，結果應為 `true`（確認 pgcrypto 接受雜湊格式）。
+  3. `python scripts/make_admin_hash.py`，輸入 12 碼密碼，把印出的 `INSERT` SQL 貼到 SQL Editor 執行。
+  4. `python scripts/check_admin_rpc.py`（輸入密碼）驗證登入、儲存與「設定未被改動」；再到儀表板最下方實際登入操作一次。
+- **告警設定第 3 階段**（暫緩）：視覺調整（玻璃效果等），分析結論見專案筆記；屆時再決定範圍。
 - 持續觀察後續排程時槽是否穩定自動觸發，且每次都更新 `pipeline_status` 的 `schedule` 列。
 - （建議，低優先）「立即更新」觸發 GitHub 時，成功條件目前只認 HTTP 204；官方文件現只列 200，按鈕流程實測正常，由此推論目前實際回應為 204（未直接記錄回應碼）。可改為 200 或 204 都算成功，避免 GitHub 日後調整造成誤判「觸發失敗」。
 - 重新繪製 `architecture_diagram.svg`、`sequence_diagram.svg`（仍為 v1.1.0 版本，且尚未反映 Telegram 與告警設定）。
 - 將 workflow 的 `actions/checkout`、`actions/setup-python` 升級，消除 Node.js 20 deprecated 警告。
 
 ### 10.3 版本紀錄
+- **v1.8.0**：告警設定面板（第 2 階段）：儀表板最下方新增需輸入管理者密碼的「告警設定」面板，可編輯 22 縣市各自的降雨／低溫／高溫開關與門檻、三個發送時段，並有全部啟用／全部關閉；密碼驗證在資料庫內進行（`private.admin_credential` 存 bcrypt 雜湊，`admin_get_alert_settings`／`admin_save_alert_settings` 以 `pgcrypto` 驗證，錯誤延遲 1 秒），設定內容未登入完全看不到；新增 `make_admin_hash.py`、`check_admin_rpc.py`、`components/admin.py`。
 - **v1.7.0**：告警設定化（第 1 階段）：新增 `alert_city_settings`（縣市為主鍵，降雨／低溫／高溫各自的開關與門檻，預設全部關閉）與 `alert_slot_settings`（可選發送時段 08:45／14:45／20:45），`anon` 完全讀不到也寫不了；排程腳本改讀資料庫設定，只在啟用的發送時段發送，判斷視窗改為「本次發送時槽到下一個啟用時槽」（含進行中時段，標示進行中／即將開始，不再逐時段去重）；讀不到設定時不發送；新增 `scripts/alert_rules.py`。訊息副標題與每行格式隨之調整（涵蓋範圍、時段起訖）。
 - **v1.6.0**：推播管道由 Google Chat 改為 Telegram（個人 Gmail 無法使用 Google Chat webhook／API）；訊息改為純文字（HTML 模式加跳脫，400 時純文字重送），超過上限顯示「另有 N 筆未列出」；推播失敗訊息與 `pipeline_status` 記錄一律不含 token；新增 `notifier.py`、`get_telegram_chat_id.py`、`test_notify.py`。
 - **v1.5.0**：地區與縣市下拉改為互斥（選其一會清除另一個），縣市選單固定 22 縣市；全台／地區層級於明細右邊新增「後續時段」分頁（每縣市目前時段之後 2 個時段，依縣市、時間排序）；單一縣市的降雨機率長條圖改為與地區一致的折線圖；氣象署未提供的降雨機率在圖上補 0 並以空心點與提示標示；天氣圖示依日夜區分（夜間不使用太陽圖示）。
@@ -702,4 +739,4 @@ HW1/                                     # repo 根目錄
 
 ---
 
-*本規格書目前為 v1.7.0。*
+*本規格書目前為 v1.8.0。*

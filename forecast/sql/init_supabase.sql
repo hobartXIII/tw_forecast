@@ -135,3 +135,97 @@ CREATE TRIGGER trg_alert_slot_settings_updated_at
 --   關閉臺北市的低溫條件： UPDATE public.alert_city_settings SET min_temp_enabled = false WHERE location_name = '臺北市';
 --   全部縣市啟用：         UPDATE public.alert_city_settings SET enabled = true;
 --   關閉 14:45 發送：      UPDATE public.alert_slot_settings SET enabled = false WHERE slot = '14:45';
+
+
+-- ============================================================
+-- 管理者密碼與告警設定函式（第 2 階段；SPECIFICATION.md §5.1、§8.1）
+-- 管理者密碼的 bcrypt 雜湊存在 private schema（不對 API 開放）；頁面呼叫下面兩個函式時帶入密碼，
+-- 由資料庫比對雜湊，密碼正確才讀取／寫入告警設定。anon 只能「呼叫函式」，不能直接碰任何設定表。
+-- ============================================================
+CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA extensions;
+
+CREATE SCHEMA IF NOT EXISTS private;
+REVOKE ALL ON SCHEMA private FROM PUBLIC, anon, authenticated;
+
+CREATE TABLE IF NOT EXISTS private.admin_credential (
+    id INTEGER PRIMARY KEY CHECK (id = 1),                    -- 只有一位管理者
+    password_hash TEXT NOT NULL CHECK (password_hash LIKE '$2a$%' OR password_hash LIKE '$2b$%' OR password_hash LIKE '$2y$%'),  -- bcrypt 雜湊，絕不存明文
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+ALTER TABLE private.admin_credential ENABLE ROW LEVEL SECURITY;      -- 不建立任何 policy
+REVOKE ALL ON private.admin_credential FROM PUBLIC, anon, authenticated;
+
+-- 驗證密碼（僅供下面兩個函式內部呼叫）：錯誤、未設定、空值一律延遲 1 秒後拒絕，讓連續猜測變慢
+CREATE OR REPLACE FUNCTION private.verify_admin(p_password TEXT)
+RETURNS VOID LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+    v_hash TEXT;
+BEGIN
+    SELECT password_hash INTO v_hash FROM private.admin_credential WHERE id = 1;
+    IF v_hash IS NULL OR p_password IS NULL OR p_password = ''
+       OR extensions.crypt(p_password, v_hash) IS DISTINCT FROM v_hash THEN   -- NULL 也視為不符（無法確定就拒絕）
+        PERFORM pg_sleep(1);
+        RAISE EXCEPTION 'invalid_password' USING ERRCODE = '28P01';
+    END IF;
+END;
+$$;
+REVOKE ALL ON FUNCTION private.verify_admin(TEXT) FROM PUBLIC, anon, authenticated;
+
+-- 讀取告警設定（密碼正確才回傳）
+CREATE OR REPLACE FUNCTION public.admin_get_alert_settings(p_password TEXT)
+RETURNS JSONB LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+BEGIN
+    PERFORM private.verify_admin(p_password);
+    RETURN jsonb_build_object(
+        'cities', (SELECT COALESCE(jsonb_agg(to_jsonb(c) ORDER BY c.location_name), '[]'::jsonb)
+                   FROM public.alert_city_settings c),
+        'slots',  (SELECT COALESCE(jsonb_agg(to_jsonb(s) ORDER BY s.slot), '[]'::jsonb)
+                   FROM public.alert_slot_settings s));
+END;
+$$;
+
+-- 儲存告警設定（密碼正確才寫入）：只更新既有的縣市與發送時段（不能新增或刪除），
+-- 數值範圍由資料表的 CHECK 把關；兩張表在同一個交易內更新，失敗時全部回復
+CREATE OR REPLACE FUNCTION public.admin_save_alert_settings(p_password TEXT, p_cities JSONB, p_slots JSONB)
+RETURNS JSONB LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+    v_cities INTEGER;
+    v_slots INTEGER;
+BEGIN
+    PERFORM private.verify_admin(p_password);
+    IF p_cities IS NULL OR jsonb_typeof(p_cities) <> 'array' OR jsonb_array_length(p_cities) > 100
+       OR p_slots IS NULL OR jsonb_typeof(p_slots) <> 'array' OR jsonb_array_length(p_slots) > 10 THEN
+        RAISE EXCEPTION 'invalid_payload' USING ERRCODE = '22023';
+    END IF;
+
+    UPDATE public.alert_city_settings AS t SET
+        enabled = r.enabled,
+        rain_enabled = r.rain_enabled, rain_threshold = r.rain_threshold,
+        min_temp_enabled = r.min_temp_enabled, min_temp_threshold = r.min_temp_threshold,
+        max_temp_enabled = r.max_temp_enabled, max_temp_threshold = r.max_temp_threshold
+    FROM jsonb_to_recordset(p_cities) AS r(
+        location_name TEXT, enabled BOOLEAN, rain_enabled BOOLEAN, rain_threshold INTEGER,
+        min_temp_enabled BOOLEAN, min_temp_threshold NUMERIC, max_temp_enabled BOOLEAN, max_temp_threshold NUMERIC)
+    WHERE t.location_name = r.location_name;
+    GET DIAGNOSTICS v_cities = ROW_COUNT;
+
+    UPDATE public.alert_slot_settings AS t SET enabled = r.enabled
+    FROM jsonb_to_recordset(p_slots) AS r(slot TEXT, enabled BOOLEAN)
+    WHERE t.slot = r.slot;
+    GET DIAGNOSTICS v_slots = ROW_COUNT;
+
+    RETURN jsonb_build_object('cities', v_cities, 'slots', v_slots);
+END;
+$$;
+
+-- 只有 anon（前端使用的角色）能呼叫這兩個函式；PUBLIC 預設的執行權限一併撤銷
+REVOKE ALL ON FUNCTION public.admin_get_alert_settings(TEXT) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.admin_save_alert_settings(TEXT, JSONB, JSONB) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.admin_get_alert_settings(TEXT) TO anon;
+GRANT EXECUTE ON FUNCTION public.admin_save_alert_settings(TEXT, JSONB, JSONB) TO anon;
+
+-- 設定／更換管理者密碼（在 SQL Editor 執行）。雜湊值請用 python scripts/make_admin_hash.py 在本機產生，
+-- 不要把密碼明文貼進 SQL Editor（查詢紀錄會保留）：
+--   INSERT INTO private.admin_credential (id, password_hash) VALUES (1, '<雜湊值>')
+--   ON CONFLICT (id) DO UPDATE SET password_hash = EXCLUDED.password_hash, updated_at = now();
+-- 相容性檢查（雜湊值格式是否被 pgcrypto 接受）：python scripts/make_admin_hash.py --selftest 會印出可直接執行的 SQL。

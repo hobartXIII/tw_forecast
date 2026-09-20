@@ -7,9 +7,10 @@ import time
 import pandas as pd
 import requests
 import streamlit as st
+from streamlit.errors import StreamlitAPIException
 from streamlit_folium import st_folium
 
-from components import db
+from components import admin, db
 from components.charts import RAIN_ALERT, series_chart, temp_trend_chart
 from components.format import is_night, weather_icon
 from components.map_view import build_map, display_temp
@@ -328,3 +329,128 @@ if tab_next is not None:
             st.info("沒有後續時段的預報資料（資料可能已過期），請按「立即更新」。")
         else:
             show_table(make_table(later, dated=True), ["地區"] if region != ALL_REGIONS else [])
+
+
+# ---------- 告警設定（管理者；密碼在資料庫驗證，登入後才讀得到設定） ----------
+ADMIN_STATE_KEYS = ("admin_pw", "admin_df", "admin_slots", "admin_seen", "admin_ver")
+
+
+def rerun_panel() -> None:
+    """只重跑設定面板；若目前是整頁重跑（fragment 範圍無效）就退回整頁重跑，不會當掉。"""
+    try:
+        st.rerun(scope="fragment")
+    except StreamlitAPIException:
+        st.rerun()
+
+
+def admin_logout(notice: str | None = None) -> None:
+    for key in ADMIN_STATE_KEYS:
+        st.session_state.pop(key, None)
+    if notice:
+        st.session_state["admin_notice"] = notice
+
+
+def admin_reload(sb, password: str, notice: str | None = None) -> None:
+    """重新從資料庫讀取設定並重設編輯表格（換一個版本號，讓元件回到資料庫的值）。"""
+    ss = st.session_state
+    ss["admin_df"], ss["admin_slots"] = admin.get_settings(sb, password)
+    ss["admin_ver"] = ss.get("admin_ver", 0) + 1
+    if notice:
+        ss["admin_notice"] = notice
+
+
+@st.fragment
+def admin_panel(sb) -> None:
+    """設定面板。用 fragment 隔離：編輯設定只重跑這一塊，不會重新載入整個儀表板。"""
+    ss = st.session_state
+    if notice := ss.pop("admin_notice", None):
+        st.info(notice)
+
+    # 閒置超過期限：下一次操作就要求重新登入（密碼只存在本次連線的伺服器記憶體，重新整理頁面即清除）
+    if "admin_pw" in ss and time.time() - ss.get("admin_seen", 0) > admin.IDLE_TIMEOUT_SECONDS:
+        admin_logout()
+        st.info("已因閒置超過 15 分鐘登出，請重新登入")
+
+    if "admin_pw" not in ss:  # ---- 未登入：只有密碼輸入框，看不到任何設定 ----
+        with st.form("admin_login", clear_on_submit=True):
+            password = st.text_input("管理者密碼", type="password")
+            submitted = st.form_submit_button("登入")
+        if submitted:
+            if not password:
+                st.warning("請輸入密碼")
+            else:
+                if fails := min(ss.get("admin_fails", 0), 5):
+                    time.sleep(fails)  # 連續失敗越多次，等越久（資料庫端錯誤時另有 1 秒延遲）
+                try:
+                    admin_reload(sb, password)
+                except admin.WrongPassword:
+                    ss["admin_fails"] = ss.get("admin_fails", 0) + 1
+                    st.error("密碼錯誤")
+                except admin.AdminError as exc:
+                    st.error(str(exc))
+                else:
+                    ss["admin_pw"], ss["admin_seen"], ss["admin_fails"] = password, time.time(), 0
+                    rerun_panel()
+        return
+
+    # ---- 已登入 ----
+    ss["admin_seen"] = time.time()
+    df, slots, ver = ss["admin_df"], ss["admin_slots"], ss["admin_ver"]
+    st.caption("已登入｜勾選「啟用」的縣市才會發送告警｜設定在下一個發送時段生效｜"
+               "閒置超過 15 分鐘，下一次操作需重新登入")
+    if not df["啟用"].any():
+        st.info("尚未啟用任何縣市，不會發送告警")
+
+    with st.form("admin_edit"):
+        st.markdown("**發送時段**（勾選的時段才會發送；視窗為「該時段到下一個勾選時段之前」）")
+        slot_cols = st.columns(len(admin.SLOTS))
+        new_slots = {slot: col.checkbox(slot, value=slots[slot], key=f"admin_slot_{slot}_{ver}")
+                     for slot, col in zip(admin.SLOTS, slot_cols)}
+        st.markdown("**縣市設定**（每個縣市各自設定；降雨 ≥ 門檻、最低溫 ≤ 門檻、最高溫 ≥ 門檻，任一已勾選的條件符合就通知）")
+        edited = st.data_editor(
+            df, key=f"admin_editor_{ver}", hide_index=True, disabled=["縣市"], num_rows="fixed",
+            width="stretch", height=600,
+            column_config={
+                "啟用": st.column_config.CheckboxColumn(help="關閉的縣市不發送任何告警"),
+                "降雨": st.column_config.CheckboxColumn(help="啟用降雨條件"),
+                "降雨門檻 (%)": st.column_config.NumberColumn(min_value=0, max_value=100, step=1, format="%d"),
+                "低溫": st.column_config.CheckboxColumn(help="啟用低溫條件"),
+                "低溫門檻 (°C)": st.column_config.NumberColumn(min_value=-20, max_value=50, step=0.5, format="%.1f"),
+                "高溫": st.column_config.CheckboxColumn(help="啟用高溫條件"),
+                "高溫門檻 (°C)": st.column_config.NumberColumn(min_value=-20, max_value=50, step=0.5, format="%.1f"),
+            })
+        col_save, col_on, col_off = st.columns(3)
+        save = col_save.form_submit_button("💾 儲存", type="primary")
+        all_on = col_on.form_submit_button("全部啟用（尚未儲存）")
+        all_off = col_off.form_submit_button("全部關閉（尚未儲存）")
+
+    if all_on or all_off:  # 只改表格內容，仍需按「儲存」才會寫入
+        ss["admin_df"], ss["admin_slots"] = admin.set_all_enabled(edited, all_on), new_slots
+        ss["admin_ver"] = ver + 1
+        rerun_panel()
+    if save:
+        try:
+            admin.save_settings(sb, ss["admin_pw"], edited, new_slots)
+            admin_reload(sb, ss["admin_pw"], "已儲存，設定會在下一個發送時段生效")
+        except admin.WrongPassword:
+            admin_logout("密碼已失效，請重新登入")
+        except admin.AdminError as exc:
+            st.error(f"儲存失敗：{exc}")
+            return
+        rerun_panel()
+
+    col_reload, col_logout, _ = st.columns([1, 1, 3])
+    if col_reload.button("重新載入（放棄未儲存的修改）"):
+        try:
+            admin_reload(sb, ss["admin_pw"], "已重新載入")
+        except admin.AdminError as exc:
+            admin_logout(str(exc))
+        rerun_panel()
+    if col_logout.button("登出"):
+        admin_logout("已登出")
+        rerun_panel()
+
+
+st.divider()
+with st.expander("⚙️ 告警設定（管理者）"):
+    admin_panel(sb)
