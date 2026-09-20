@@ -21,6 +21,11 @@ CREATE TABLE IF NOT EXISTS public.weather_forecasts (
 
 CREATE INDEX IF NOT EXISTS idx_weather_forecasts_time ON public.weather_forecasts(forecast_time_start DESC);
 
+-- 資料庫預設時區設為台灣：timestamptz 內部仍以 UTC 儲存，此設定只影響查詢結果的顯示（顯示為 +08:00）
+-- 對新連線生效（Supabase 資料庫名稱為 postgres）；已開啟的 SQL Editor 分頁需重新整理
+ALTER DATABASE postgres SET timezone TO 'Asia/Taipei';
+ALTER ROLE authenticator SET timezone TO 'Asia/Taipei';  -- PostgREST / supabase-py 連線所用角色
+
 -- 既有資料表補欄位（首次建表者可略過；已存在的表會補上，既有列以執行當下時間填入）
 ALTER TABLE public.weather_forecasts
     ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now();

@@ -301,6 +301,11 @@ CREATE TABLE IF NOT EXISTS public.weather_forecasts (
 -- 索引優化（主鍵已涵蓋 location_name 開頭的查詢）
 CREATE INDEX IF NOT EXISTS idx_weather_forecasts_time ON public.weather_forecasts(forecast_time_start DESC);
 
+-- 資料庫預設時區設為台灣：timestamptz 內部仍以 UTC 儲存，此設定只影響查詢結果的顯示（顯示為 +08:00）
+-- 對新連線生效（Supabase 資料庫名稱為 postgres）；已開啟的 SQL Editor 分頁需重新整理
+ALTER DATABASE postgres SET timezone TO 'Asia/Taipei';
+ALTER ROLE authenticator SET timezone TO 'Asia/Taipei';  -- PostgREST / supabase-py 連線所用角色
+
 -- 既有資料表補欄位（首次建表者可略過；已存在的表會補上，既有列以執行當下時間填入）
 ALTER TABLE public.weather_forecasts
     ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now();
@@ -325,6 +330,8 @@ ALTER TABLE public.weather_forecasts ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Allow anon read only" ON public.weather_forecasts
     FOR SELECT TO anon USING (true);
 ```
+
+**時區說明**：`timestamptz` 一律以 UTC 儲存，`updated_at` 與預報時段皆同；上方 `ALTER DATABASE ... SET timezone` 讓查詢結果以台灣時間（+08:00）顯示。前端仍須依 §3.4 以 `Asia/Taipei` 轉換，不可依賴資料庫的顯示時區。
 
 **RLS 設計說明**：
 - **寫入端**：僅 GitHub Actions 的流程一使用 **`service_role` key** 寫入（會繞過 RLS）。
