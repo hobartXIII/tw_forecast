@@ -242,20 +242,17 @@ def series_data(column: str) -> tuple[pd.DataFrame, list[str]]:
 def next_periods(n: int = 2) -> pd.DataFrame:
     """每個縣市「目前時段」之後的 n 個時段，依縣市（地區順序）→ 時間排序。"""
     later = (fc[fc["forecast_time_start"] > start]
-             .sort_values(["order", "forecast_time_start"]).groupby("location_name", sort=False).head(n).copy())
-    later["階段"] = later.groupby("location_name", sort=False).cumcount().map({0: "下一時段", 1: "再下一時段"})
+             .sort_values(["order", "forecast_time_start"]).groupby("location_name", sort=False).head(n))
     return later
 
 
-def make_table(src: pd.DataFrame, *, dated: bool, stage: bool = False) -> pd.DataFrame:
+def make_table(src: pd.DataFrame, *, dated: bool) -> pd.DataFrame:
     """明細表格。天氣現象的圖示依每列自己的時段判斷日夜。"""
     period = [f"{s:%m/%d %H:%M}~{e:%H:%M}" if dated else f"{s:%H:%M}~{e:%H:%M}"
               for s, e in zip(src["forecast_time_start"], src["forecast_time_end"])]
     weather = [f"{weather_icon(w, is_night(s, e))} {w}".strip() if isinstance(w, str) else "—"
                for w, s, e in zip(src["weather_condition"], src["forecast_time_start"], src["forecast_time_end"])]
     columns = {"縣市": src["location_name"], "地區": src["region"]}
-    if stage:
-        columns["階段"] = src["階段"]
     columns.update({
         "時段": period, "天氣現象": weather,
         "最低 (°C)": src["min_temp"], "最高 (°C)": src["max_temp"], "平均 (°C)": src["avg"].round(1),
@@ -277,7 +274,7 @@ def show_table(table: pd.DataFrame, drop: list[str]) -> None:
 
 
 if city:
-    tab_temp, tab_rain, tab_table = st.tabs(["📈 氣溫趨勢", "🌧️ 降雨機率", "📋 各時段預報"])
+    tab_temp, tab_rain, tab_table = st.tabs(["📈 氣溫趨勢", "🌧️ 降雨機率", "📋 一週預報"])
     tab_next = None
 else:  # 全台／地區：明細右邊多一個「後續時段」分頁
     tab_temp, tab_rain, tab_table, tab_next = st.tabs(
@@ -314,7 +311,8 @@ with tab_rain:  # 全台／地區／單一縣市都用同一種折線圖（單�
                "明細表格與摘要仍顯示為「—」。")
 
 with tab_table:
-    if city:  # 單一縣市：列出該縣市所有尚未結束的時段，與趨勢圖對照
+    if city:  # 單一縣市：列出該縣市所有尚未結束的時段（一週預報），與趨勢圖對照
+        st.caption(f"{city}｜未來一週的預報（每個時段約 12 小時）")
         if fc is None:
             st.info("沒有未來預報資料（資料可能已過期），請按「立即更新」。")
         else:
@@ -324,9 +322,9 @@ with tab_table:
 
 if tab_next is not None:
     with tab_next:
-        st.caption(f"{scope_label}｜每個縣市「目前時段」之後的 2 個時段（依縣市、時間排序）")
+        st.caption("每個縣市「目前時段」之後的 2 個時段（依縣市、時間排序）")
         later = next_periods() if fc is not None else None
         if later is None or later.empty:
             st.info("沒有後續時段的預報資料（資料可能已過期），請按「立即更新」。")
         else:
-            show_table(make_table(later, dated=True, stage=True), ["地區"] if region != ALL_REGIONS else [])
+            show_table(make_table(later, dated=True), ["地區"] if region != ALL_REGIONS else [])
