@@ -626,15 +626,15 @@ HW1/                                     # repo 根目錄
 | :---: | :---: | :--- |
 | M0 | ✅ 完成 | repo：`hobartXIII/tw_forecast`，根目錄 `HW1/` |
 | M1 | ⚠️ 部分完成 | CWA、Supabase 金鑰已備妥；**`GOOGLE_CHAT_WEBHOOK` 尚未設定**，告警目前不會推播（腳本會略過） |
-| M2 | ⚠️ 待更新 | `weather_forecasts`（含 `updated_at`、觸發器、`Asia/Taipei` 時區）已完成；**新增的 `pipeline_status` 需在 Supabase 重新執行 `init_supabase.sql`** |
+| M2 | ✅ 完成 | `weather_forecasts`（含 `updated_at`、觸發器、`Asia/Taipei` 時區）與 `pipeline_status`（排程、手動各一列）皆已建立；`anon` 讀取 `pipeline_status` 已驗證。**`anon` 不可寫入新表的驗證（`check_rls.py`）尚未執行** |
 | M3 | ✅ 完成 | 推播邏輯已實作，待設定 webhook 後實際驗證 |
-| M4 | ✅ 完成 | 手動觸發已成功執行並寫入 Supabase；`cron`（台灣時間 02:45 起每 3 小時）已設定，尚未確認實際自動觸發紀錄 |
-| M5 | ✅ 完成 | 地區／縣市連動篩選、地圖、趨勢圖、明細表格；「立即更新」（20 分鐘間隔、觸發後 60 秒自動重整）程式已完成並以模擬測試驗證，**尚未設定 `GH_REPO` / `GH_DISPATCH_TOKEN`**，實際觸發尚未驗證；需先執行新的 SQL 建立 `pipeline_status` |
+| M4 | ✅ 完成 | 手動觸發與**自動排程皆已實際成功**：`cron`（台灣時間 02:45 起每 3 小時）於 2026-09-20 20:55 自動觸發（`schedule` 事件，較預定時槽 20:45 延遲約 10 分鐘），成功寫入預報，並更新 `pipeline_status` 的 `schedule` 列（`last_success_at` = 20:56）。目前只觀察到這一次排程，後續時槽尚待觀察 |
+| M5 | ✅ 完成 | 地區／縣市連動篩選、地圖、趨勢圖、明細表格；「立即更新」（20 分鐘間隔、觸發後 60 秒自動重整）程式已完成並以模擬測試驗證，儀表板可正常讀取 `pipeline_status`；**尚未設定 `GH_REPO` / `GH_DISPATCH_TOKEN`**，實際觸發 GitHub 尚未驗證 |
 | M6 | ✅ 完成 | 已部署至 Streamlit Community Cloud 並正常顯示資料 |
 
 ### 10.2 待辦
-- 於 Supabase 執行更新後的 `sql/init_supabase.sql`（新增 `pipeline_status`），並執行 `python scripts/check_rls.py` 驗證；在此之前「立即更新」會因讀不到狀態而停用。
-- 確認新排程（台灣時間 02:45 起每 3 小時）實際自動觸發，並在 `pipeline_status` 看到 `schedule` 列的時間更新。
+- 執行 `python scripts/check_rls.py`，驗證 `anon` 對 `pipeline_status` 只能讀、不能改與刪（`pipeline_status` 已建立，讀取已驗證）。
+- 持續觀察後續排程時槽（如 23:45、02:45）是否穩定自動觸發，且每次都更新 `pipeline_status` 的 `schedule` 列。
 - 設定 `GOOGLE_CHAT_WEBHOOK` 並驗證告警推播。
 - 設定 `GH_REPO` / `GH_DISPATCH_TOKEN` 並驗證「立即更新」。
 - 重新繪製 `architecture_diagram.svg`、`sequence_diagram.svg`（仍為 v1.1.0 版本）。
