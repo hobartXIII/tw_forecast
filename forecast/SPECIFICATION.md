@@ -1,8 +1,8 @@
 # 台灣天氣預報與自動化通報系統 (Taiwan Weather Forecast System)
 # 系統規格書 (System Specification Document)
 
-- **版本**: `v1.2.0`
-- **狀態**: `Approved & Updated: Streamlit-only Frontend reading Supabase directly`
+- **版本**: `v1.3.0`
+- **狀態**: `Implemented: 後端排程與 Streamlit 前端皆已上線運作（見 §10 進度）`
 - **文件路徑**: `forecast/SPECIFICATION.md`
 - **核心流程規範**:
   1. **流程一（後端）**：GitHub Actions 排程執行 Python (`fetch_and_store.py`)，呼叫中央氣象署 API 取資料、後處理並寫入雲端 Supabase；符合條件時推播 Google Chat。
@@ -370,6 +370,8 @@ CREATE POLICY "Allow anon read only" ON public.weather_forecasts
 
 工作流程自動執行**流程一**，將氣象資料寫入 Supabase；前端不需要重新部署，重新整理即可讀到新資料。
 
+> 以下為實際使用的 `HW1/.github/workflows/weather_worker.yml`（repo 根目錄為 `HW1/`，故以 `working-directory: forecast` 執行，`requirements.txt` 在根目錄）。
+
 **觸發方式**：
 - **固定排程**：由 workflow 內的 `cron` 決定（每 6 小時），排程時間僅能透過修改 `.yml` 並 commit 變更，前端不提供調整功能。
 - **手動立即更新**：前端 Streamlit 按鈕透過 GitHub API 觸發 `workflow_dispatch`（見 §8.1）。
@@ -379,7 +381,7 @@ name: Taiwan Weather Pipeline (Fetch -> Store)
 
 on:
   schedule:
-    - cron: '0 */6 * * *' # 每 6 小時排程執行一次 (UTC)
+    - cron: '0 */6 * * *' # 每 6 小時排程執行一次 (UTC)，台灣時間 02:00 / 08:00 / 14:00 / 20:00
   workflow_dispatch:      # 支援隨時手動點擊執行
 
 permissions:
@@ -392,6 +394,10 @@ concurrency:
 jobs:
   weather-sync:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: forecast   # repo 根目錄為 HW1/，專案程式碼在 forecast/
     steps:
       - name: 檢出專案程式碼
         uses: actions/checkout@v4
@@ -401,6 +407,7 @@ jobs:
         with:
           python-version: '3.11'
           cache: 'pip'
+          cache-dependency-path: requirements.txt
 
       - name: 安裝相依套件
         run: |
@@ -433,16 +440,32 @@ jobs:
 1. **讀取資料庫（不快取）**：每次頁面載入/重新整理都重新查詢 Supabase，**不使用** `st.cache_data` / `st.cache_resource` 快取查詢結果（連線物件可重用）；畫面顯示目前顯示的預報時段起訖時間，以及該批資料的「資料更新時間」（取所顯示列的 `updated_at` 最大值），皆以 `Asia/Taipei` 顯示。
    - **只取最新批次**：CWA 第一個時段會隨時間縮短（如 `06:00~18:00` → `12:00~18:00`），而主鍵含 `forecast_time_end`，舊列會留在表中並與新列時段重疊。每次流程一都以同一個 `updated_at` 寫入整批，因此前端查詢後只保留 `updated_at` 等於最大值的列，避免同一縣市出現重疊時段；舊列保留作為歷史存檔。
 2. **「目前時段」定義**：查詢 `forecast_time_start <= 現在(Asia/Taipei) < forecast_time_end` 的各縣市資料；若無符合資料，取最接近現在的最新時段。
-3. **地區下拉選單 (Dropdown)**：
-   - 篩選 `全部地區`、`北部地區`、`中部地區`、`南部地區`、`東部地區`、`離島地區`（澎湖、金門、連江不屬於四大分區，另列離島）；縣市對應分區由前端靜態對照表 (`streamlit_app/components/region_data.py`) 提供；經緯度與 `avg_temp` 直接取自資料庫（`avg_temp` 若為 NULL，退回 `(min_temp + max_temp) / 2`）。
-4. **最高與最低氣溫折線圖（一週趨勢）**：
-   - 繪製指定地區/縣市未來 7 天（各 12 小時時段）之 `min_temp` 與 `max_temp` 雙折線圖（對應海報步驟 14）；另有「折線圖範圍」下拉選單，可選「地區平均」（該地區各縣市逐時段平均）或單一縣市。
+   - **重點摘要**：篩選之後、地圖之前顯示 4 個指標。多縣市時為平均氣溫、最高溫（含縣市）、最低溫（含縣市）、最高降雨機率（含縣市）；選定單一縣市時改為該縣市的平均氣溫（附天氣現象）、最高溫、最低溫、降雨機率。欄位為 NULL 時顯示「—」。
+   - 若沒有涵蓋此刻的時段（資料過期），以警示提醒「顯示的是最接近的時段」。
+3. **地區／縣市連動下拉選單**（兩個下拉，整頁內容都跟著選擇更新）：
+   - 「地區」：`全部地區`、`北部地區`、`中部地區`、`南部地區`、`東部地區`、`離島地區`（澎湖、金門、連江不屬於四大分區，另列離島）；縣市對應分區由前端靜態對照表 (`streamlit_app/components/region_data.py`) 提供。
+   - 「縣市」：`全部縣市` 加上目前地區內的縣市；地區為「全部地區」時列出全部 22 縣市，即可直接選縣市。換地區後，原本選的縣市若不在新地區，自動回到「全部縣市」。
+   - 依選擇決定顯示層級：**全台**（地區＝全部地區、縣市＝全部縣市）→ **地區**（選定地區、縣市＝全部縣市）→ **單一縣市**。
+   - 經緯度與 `avg_temp` 直接取自資料庫（`avg_temp` 若為 NULL，退回 `(min_temp + max_temp) / 2`）。
+4. **趨勢圖（未來一週，以分頁呈現）**：不再另設「趨勢圖範圍」選單，範圍由上面兩個下拉決定；圖上以虛線標示「現在」。
+   - 「氣溫趨勢」與「降雨機率」兩個分頁，與明細表格同屬一組分頁。
+   - **全台層級**：每個地區的平均為一條線（5 條），各一種顏色。
+   - **地區層級**：該地區每個縣市一條線（≤ 6 條），各一種顏色（色盲友善的 Okabe-Ito 色盤）。
+   - **單一縣市層級**：氣溫為 `min_temp` / `max_temp` 雙折線加灰色範圍帶；降雨機率為長條圖，`rain_probability >= 60`（與告警門檻一致）者標紅。
+   - **氣溫指標切換**（全台／地區層級）：最高溫、最低溫、平均溫三選一（預設最高溫），避免每個縣市兩條線造成畫面過於擁擠。
+   - **降雨機率**（全台／地區層級）：折線加點，畫出 60% 紅色虛線門檻，超過者的點放大並加紅框；Y 軸固定 0～100。遠期時段無資料時不畫點，並附註說明。
+   - **圖例互動**：點圖例可強調單一系列、淡化其他系列（在圖內完成，不重新載入頁面）。
+   - 氣象署時段為白天（06–18）與夜間（18–06）交替，最高溫折線會呈現日夜起伏，屬資料本身特性。
    - 若資料已過期（沒有尚未結束的時段），顯示提示並引導使用者按「立即更新」，不得拋出例外。
    - 趨勢查詢須限制範圍（例如近 N 天 + `order` + `limit`），避免超過 Supabase 預設單次 1000 筆上限。
 5. **明細資料表格**：
-   - 呈現目前時段各縣市的時段、地區、天氣現象、氣溫、降雨機率、舒適度（對應海報步驟 15）；NULL 顯示「—」。
+   - 全台／地區層級：呈現目前時段各縣市的時段、地區、天氣現象、氣溫、降雨機率、舒適度（對應海報步驟 15）。
+   - 單一縣市層級：分頁改名為「各時段預報」，列出該縣市所有尚未結束的時段，與趨勢圖對照。
+   - 「天氣現象」前加對應 emoji，降雨機率以進度條呈現，選定地區時隱藏「地區」欄；NULL 顯示「—」或留白。
 6. **台灣地圖視覺化 (Folium + Streamlit)**：
-   - 使用 `folium` + `streamlit-folium`，依縣市座標與 `avg_temp` 繪製標記。
+   - 使用 `folium` + `streamlit-folium`，依縣市座標與 `avg_temp` 繪製標記；標記內直接顯示平均氣溫（整數），滑鼠移上去顯示天氣現象、氣溫範圍與降雨機率。
+   - **互動**：**關閉滑鼠滾輪縮放**（避免捲動頁面時誤觸），以左上角 ＋／－ 按鈕手動縮放，並可拖曳平移；選擇單一地區時，視野自動聚焦到該地區的縣市。
+   - **單一縣市**：保留該地區其他縣市作為對照（淡化），被選的縣市放大、加外框並置中（縮放層級 9）。
    - 色階分級標記：
      - `< 20°C`: 藍綠色
      - `20 ~ 25°C`: 綠色
@@ -494,8 +517,8 @@ conn = psycopg2.connect(st.secrets["SUPABASE_DB_URL"])  # 唯讀角色 + Pooler 
 
 ## 9. 專案目錄與檔案結構藍圖
 
-> **Repo 根目錄約定**：GitHub 只會執行 **repo 根目錄**下的 `.github/workflows/`。本專案以 `HW1/` 作為 **repo 根目錄**，專案程式碼與文件全部放在 `forecast/` 子資料夾；`.github/` 與 `.gitignore` 只在根目錄保留一份。因此：
-> - workflow 位於 `HW1/.github/workflows/`，每個 `run` 步驟以 `working-directory: forecast` 執行，`cache-dependency-path` 帶 `forecast/` 前綴。
+> **Repo 根目錄約定**：GitHub 只會執行 **repo 根目錄**下的 `.github/workflows/`。本專案以 `HW1/` 作為 **repo 根目錄**，專案程式碼與文件全部放在 `forecast/` 子資料夾；`.github/`、`.gitignore` 與 `requirements.txt` 只在根目錄保留一份。因此：
+> - workflow 位於 `HW1/.github/workflows/`，每個 `run` 步驟以 `working-directory: forecast` 執行，`cache-dependency-path` 指向根目錄的 `requirements.txt`。
 > - Streamlit Cloud 的 Main file path 為 `forecast/streamlit_app/app.py`，`requirements.txt` 放在 repo 根目錄（全 repo 唯一一份，workflow 以 `../requirements.txt` 引用）。
 
 ```text
@@ -507,15 +530,17 @@ HW1/                                     # repo 根目錄
 ├── requirements.txt                     # 相依套件清單（須在根目錄，供 Streamlit Cloud 偵測）
 └── forecast/                            # 專案程式碼與文件
     ├── scripts/
-    │   ├── fetch_and_store.py           # 🌟 流程一：Python 打 API 取資料存 DB & 告警推播
-    │   └── mock_test.py                 # 測試模擬 (模擬 CWA 回傳資料，寫入 Supabase)
+    │   ├── fetch_and_store.py           # 🌟 流程一：Python 打 API 取資料存 DB & 告警推播（支援 --dry-run / --from-sample）
+    │   ├── check_cwa_api.py             # 驗證 CWA API 並存下範例回應到 samples/
+    │   └── check_rls.py                 # 驗證 RLS：anon 可讀不可寫、service_role 可寫
     ├── streamlit_app/
     │   ├── app.py                       # 🌟 流程二：讀取 Supabase 渲染 Streamlit 儀表板
     │   └── components/
-    │       ├── db.py                    # Supabase 唯讀查詢 (supabase-py / psycopg2)
-    │       ├── region_data.py           # 縣市 → 分區 (北/中/南/東) 靜態對照表
-    │       ├── map_view.py              # Folium 地圖視覺化
-    │       └── charts.py                # 氣溫折線圖模組
+    │       ├── db.py                    # Supabase 唯讀查詢（不快取；只取最新批次）
+    │       ├── region_data.py           # 縣市 → 分區 (北/中/南/東/離島) 靜態對照表
+    │       ├── map_view.py              # Folium 地圖視覺化（標記顯示溫度、關閉滾輪縮放、可標出被選縣市）
+    │       ├── charts.py                # 氣溫／降雨機率趨勢圖（單一縣市與多系列）
+    │       └── format.py                # 顯示小工具（天氣現象 emoji）
     ├── .streamlit/
     │   └── secrets.toml.example         # 前端 Secrets 範本 (實際 secrets.toml 不得 commit)
     ├── sql/
@@ -540,4 +565,29 @@ HW1/                                     # repo 根目錄
 | **M6** | **部署至 Streamlit Community Cloud** | 前端上線 | 於 Streamlit Community Cloud 部署成功，Secrets 設定完成，公開網址可正常顯示最新資料。 |
 
 ---
-*本規格書已更新為 v1.2.0：前端僅保留 Streamlit + Folium 並直接讀取 Supabase，部署於 Streamlit Community Cloud；後端維持「GitHub Actions 排程 + `fetch_and_store.py` 寫入 Supabase」。*
+
+### 10.1 目前進度
+
+| 里程碑 | 狀態 | 備註 |
+| :---: | :---: | :--- |
+| M0 | ✅ 完成 | repo：`hobartXIII/tw_forecast`，根目錄 `HW1/` |
+| M1 | ⚠️ 部分完成 | CWA、Supabase 金鑰已備妥；**`GOOGLE_CHAT_WEBHOOK` 尚未設定**，告警目前不會推播（腳本會略過） |
+| M2 | ✅ 完成 | 含 `updated_at`、更新觸發器與 `Asia/Taipei` 資料庫時區 |
+| M3 | ✅ 完成 | 推播邏輯已實作，待設定 webhook 後實際驗證 |
+| M4 | ✅ 完成 | 手動觸發已成功執行並寫入 Supabase；`cron` 自動排程已設定，尚未確認實際觸發紀錄 |
+| M5 | ✅ 完成 | 地區／縣市連動篩選、地圖、趨勢圖、明細表格；「立即更新」按鈕程式已完成，**尚未設定 `GH_REPO` / `GH_DISPATCH_TOKEN`**，實際觸發尚未驗證 |
+| M6 | ✅ 完成 | 已部署至 Streamlit Community Cloud 並正常顯示資料 |
+
+### 10.2 待辦
+- 設定 `GOOGLE_CHAT_WEBHOOK` 並驗證告警推播。
+- 設定 `GH_REPO` / `GH_DISPATCH_TOKEN` 並驗證「立即更新」。
+- 重新繪製 `architecture_diagram.svg`、`sequence_diagram.svg`（仍為 v1.1.0 版本）。
+- 將 workflow 的 `actions/checkout`、`actions/setup-python` 升級，消除 Node.js 20 deprecated 警告。
+
+### 10.3 版本紀錄
+- **v1.3.0**：資料表新增 `updated_at`（建立／更新時間）與資料庫時區 `Asia/Taipei`；前端「只取最新批次」以避免重疊時段；地區／縣市連動篩選、重點摘要、多系列趨勢圖、降雨機率圖、關閉滾輪縮放；`requirements.txt` 移至 repo 根目錄；repo 根目錄改為 `HW1/`。
+- **v1.2.0**：前端僅保留 Streamlit + Folium 並直接讀取 Supabase，部署於 Streamlit Community Cloud；後端維持「GitHub Actions 排程 + `fetch_and_store.py` 寫入 Supabase」。
+
+---
+
+*本規格書目前為 v1.3.0。*
