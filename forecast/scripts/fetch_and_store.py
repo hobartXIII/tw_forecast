@@ -6,7 +6,8 @@
     python scripts/fetch_and_store.py --dry-run --from-sample   # 讀 samples/ 離線測試
 
 執行來源由 GitHub Actions 的 GITHUB_EVENT_NAME 判斷：schedule 為排程，其餘（workflow_dispatch、本機）
-視為手動。只有排程會推播告警；手動與本機只更新資料。要在本機測試推播，可設 GITHUB_EVENT_NAME=schedule。
+視為手動。只有排程會推播告警（Telegram）；手動與本機只更新資料。要在本機測試推播，可設 GITHUB_EVENT_NAME=schedule，
+或直接用 scripts/test_notify.py 傳範例訊息。
 """
 import argparse
 import json
@@ -19,6 +20,8 @@ from pathlib import Path
 
 import requests
 from dotenv import load_dotenv
+
+import notifier
 
 ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(ROOT / ".env")
@@ -143,16 +146,16 @@ def is_alert(row: dict, slot: datetime) -> bool:
             or (tmax is not None and tmax >= ALERT_MAX_TEMP))
 
 
-def build_card(rows: list[dict]) -> dict:
-    lines = []
-    for r in rows:
-        start = datetime.fromisoformat(r["forecast_time_start"]).astimezone(TZ)
-        lines.append(f"{r['location_name']} {start:%m/%d %H:%M} 起｜降雨 {r.get('rain_probability')}%｜"
-                     f"{r.get('min_temp')}~{r.get('max_temp')}°C")
-    return {"cardsV2": [{"cardId": "weather-alert", "card": {
-        "header": {"title": "🔔 天氣告警", "subtitle": f"未來 {int(ALERT_WINDOW.total_seconds() // 3600)} 小時內開始的時段，{len(rows)} 筆符合條件"},
-        "sections": [{"widgets": [{"textParagraph": {"text": "<br>".join(lines[:30])}}]}],
-    }}]}
+SECRET_ENV_VARS = ("TELEGRAM_BOT_TOKEN", "SUPABASE_KEY", "WEATHER_API_KEY")
+
+
+def mask_secrets(text: str) -> str:
+    """把環境變數中的機密值換成 ***。失敗訊息會寫進 pipeline_status（前端可讀），不可含任何金鑰。"""
+    for name in SECRET_ENV_VARS:
+        value = os.getenv(name)
+        if value and len(value) >= 8:
+            text = text.replace(value, "***")
+    return text
 
 
 def trigger_type() -> str:
@@ -218,11 +221,11 @@ def run_pipeline(args, sb, trigger: str) -> None:
     if not alerts:
         print("無需推播")
         return
-    webhook = os.getenv("GOOGLE_CHAT_WEBHOOK")
-    if not webhook:
-        print("未設定 GOOGLE_CHAT_WEBHOOK，略過推播")
+    token, chat_id = os.getenv("TELEGRAM_BOT_TOKEN"), os.getenv("TELEGRAM_CHAT_ID")
+    if not token or not chat_id:
+        print("未設定 TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID，略過推播")
         return
-    requests.post(webhook, json=build_card(alerts), timeout=15).raise_for_status()
+    notifier.notify_alerts(alerts, int(ALERT_WINDOW.total_seconds() // 3600), token, chat_id)
     print(f"已推播 {len(alerts)} 筆告警")
 
 
@@ -239,7 +242,7 @@ def main() -> None:
     except (Exception, SystemExit) as exc:  # 含 sys.exit("訊息")（缺金鑰、429），記錄失敗後照常結束
         if sb is not None:
             reason = str(exc.code) if isinstance(exc, SystemExit) else f"{type(exc).__name__}: {exc}"
-            record_status(sb, trigger, "failed", datetime.now(TZ).isoformat(), reason[:300])
+            record_status(sb, trigger, "failed", datetime.now(TZ).isoformat(), mask_secrets(reason)[:300])
         raise
 
 

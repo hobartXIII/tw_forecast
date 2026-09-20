@@ -1,11 +1,11 @@
 # 台灣天氣預報與自動化通報系統 (Taiwan Weather Forecast System)
 # 系統規格書 (System Specification Document)
 
-- **版本**: `v1.5.0`
+- **版本**: `v1.6.0`
 - **狀態**: `Implemented: 後端排程與 Streamlit 前端皆已上線運作（見 §10 進度）`
 - **文件路徑**: `forecast/SPECIFICATION.md`
 - **核心流程規範**:
-  1. **流程一（後端）**：GitHub Actions 排程執行 Python (`fetch_and_store.py`)，呼叫中央氣象署 API 取資料、後處理並寫入雲端 Supabase；符合條件時推播 Google Chat。
+  1. **流程一（後端）**：GitHub Actions 排程執行 Python (`fetch_and_store.py`)，呼叫中央氣象署 API 取資料、後處理並寫入雲端 Supabase；符合條件時推播到個人的 Telegram。
   2. **流程二（前端）**：Streamlit + Folium 儀表板直接連線 Supabase（`supabase-py` 或 `psycopg2`）讀取資料並視覺化，部署於 Streamlit Community Cloud。
 
 ---
@@ -36,7 +36,7 @@
 │                                                                        │
 │ [中央氣象署 CWA API] ──(requests)──> [Pandas 清洗] ──> [Supabase 雲端 DB] │
 │                                                                        │
-│ * 觸發條件滿足時 (降雨率 >= 60%)：同時推播告警至 [Google Chat Webhook]         │
+│ * 觸發條件滿足時 (降雨率 >= 60%)：同時推播告警至 [Telegram]                      │
 └────────────────────────────────────────────────────────────────────────┘
                                  │  (僅透過資料庫溝通)
                                  ▼
@@ -66,7 +66,7 @@ flowchart TD
     subgraph Stage1["【流程一：Python 打 API 取資料存 DB (GitHub Actions)】"]
         CWA["🌤️ 中央氣象署 API (CWA F-D0047-091 一週預報)"]
         PyIngest["🐍 核心腳本: fetch_and_store.py\n(發送 GET 請求、Pandas 清洗整理)"]
-        GChat["🔔 Google Chat Webhook (降雨機率 >= 60% 手機通知)"]
+        GChat["🔔 Telegram Bot (降雨機率 >= 60% 手機通知)"]
 
         CWA -->|1. 取得原始 JSON 氣象| PyIngest
         PyIngest -->|2. 觸發降雨/氣溫警戒| GChat
@@ -107,7 +107,7 @@ sequenceDiagram
     participant CWA as 中央氣象署 API
     participant P1 as fetch_and_store.py (流程一)
     participant DB as 雲端資料庫 (Supabase)
-    participant GC as Google Chat Webhook
+    participant GC as Telegram Bot API
     participant FE as Streamlit 儀表板 (流程二)
 
     Note over GHA,DB: 🌟 流程一：Python 打 API 取資料存 DB
@@ -117,7 +117,7 @@ sequenceDiagram
     P1->>P1: Pandas 解析、補時區、轉換為結構化資料集
     P1->>DB: 批量 Upsert 至 weather_forecasts (service_role)
     opt 若降雨機率 >= 60% 或極端溫度
-        P1->>GC: POST 發送 Google Chat 卡片警報訊息 🔔
+        P1->>GC: POST sendMessage 發送告警訊息 🔔
     end
 
     Note over DB,FE: 🌟 流程二：Streamlit 讀 DB 視覺化
@@ -231,7 +231,8 @@ records.Locations[]                     ← 1 筆 (LocationsName "台灣"，Data
 | `WEATHER_API_KEY` | String | 中央氣象署 API 授權碼 | GitHub Secrets / 本地 `.env` |
 | `SUPABASE_URL` | String | Supabase 專案端點 URL | GitHub Secrets / 本地 `.env` |
 | `SUPABASE_KEY` | String | Supabase `service_role` 金鑰 (後端專用，繞過 RLS；嚴禁進入前端) | GitHub Secrets / 本地 `.env` |
-| `GOOGLE_CHAT_WEBHOOK` | String | Google Chat 空間 Webhook 完整網址 | GitHub Secrets / 本地 `.env` |
+| `TELEGRAM_BOT_TOKEN` | String | Telegram 機器人 token（向 @BotFather 建立取得）；**等同機器人的密碼，不可進資料庫、前端或 repo** | GitHub Secrets / 本地 `.env` |
+| `TELEGRAM_CHAT_ID` | String | 接收告警的對話 ID（個人私訊；用 `scripts/get_telegram_chat_id.py` 查詢） | GitHub Secrets / 本地 `.env` |
 
 ### 4.2 前端 Streamlit 設定（Streamlit Community Cloud Secrets / 本地 `.streamlit/secrets.toml`）
 
@@ -258,7 +259,8 @@ records.Locations[]                     ← 1 筆 (LocationsName "台灣"，Data
   WEATHER_API_KEY="CWA-XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX"
   SUPABASE_URL="https://your-project.supabase.co"
   SUPABASE_KEY="eyJhbGciOiJIUzI1NiIsIn..."   # service_role
-  GOOGLE_CHAT_WEBHOOK="https://chat.googleapis.com/v1/spaces/.../messages?key=..."
+  TELEGRAM_BOT_TOKEN="123456789:AAxxxxxxxx"
+  TELEGRAM_CHAT_ID="123456789"
   ```
 - 提供範本檔 `.streamlit/secrets.toml.example`（前端）：
   ```toml
@@ -373,7 +375,7 @@ CREATE POLICY "Allow anon read only" ON public.pipeline_status
 ## 6. 流程一實作規格：Python 打 API 取資料存 DB (`fetch_and_store.py`)
 
 ### 6.1 職責與工作流程
-1. **讀取環境變數**：載入 `WEATHER_API_KEY`、`SUPABASE_URL`、`SUPABASE_KEY`、`GOOGLE_CHAT_WEBHOOK`（由 GitHub Secrets 注入），並以 GitHub Actions 內建的 `GITHUB_EVENT_NAME` 判斷執行來源：`schedule` 為排程，其餘視為手動。
+1. **讀取環境變數**：載入 `WEATHER_API_KEY`、`SUPABASE_URL`、`SUPABASE_KEY`、`TELEGRAM_BOT_TOKEN`、`TELEGRAM_CHAT_ID`（由 GitHub Secrets 注入），並以 GitHub Actions 內建的 `GITHUB_EVENT_NAME` 判斷執行來源：`schedule` 為排程，其餘視為手動。
 2. **呼叫氣象署 API**：
    ```python
    headers = {"Authorization": WEATHER_API_KEY}
@@ -388,15 +390,20 @@ CREATE POLICY "Allow anon read only" ON public.pipeline_status
    - 寫入前為整批 `records` 統一加上 `updated_at`（台灣時間 ISO 8601，本次寫入時間）；新增列取此值，既有列走 `ON CONFLICT DO UPDATE` 時一併更新；資料庫端另有 `DEFAULT now()` 與 `BEFORE UPDATE` 觸發器作為保底。
    - 單次 `upsert` 呼叫為單一資料庫交易（全部成功或全部失敗），前端不會讀到只寫入一半的批次。
    - 寫入成功後，以**同一個時間戳**更新 `pipeline_status`（見 §5.1）；執行失敗（含缺金鑰、HTTP 429）則記錄失敗狀態後照常以非 0 狀態碼結束。
-5. **條件判斷與 Google Chat 推播**：
+5. **條件判斷與 Telegram 推播**：
    - 篩選條件：任一縣市 `rain_probability >= 60` 或 `min_temp <= 12` 或 `max_temp >= 35`。
-   - **只有排程（`schedule`）會推播**；手動更新與本機執行只更新資料、不推播，避免重複通知。本機要測試推播，可設定環境變數 `GITHUB_EVENT_NAME=schedule`。
+   - **只有排程（`schedule`）會推播**；手動更新與本機執行只更新資料、不推播，避免重複通知。本機要測試推播，可用 `scripts/test_notify.py` 傳範例訊息，或設定環境變數 `GITHUB_EVENT_NAME=schedule`。
    - **只針對「即將開始」的時段判斷**：`StartTime` 落在（排程時槽, 排程時槽 + 3 小時］內。一週預報後段準確度較低，不告警遠期時段。
    - **排程時槽**：台灣時間 02:45 起每 3 小時（與 `cron` 一致）。腳本把「現在」對齊到**最近一個已經過去的時槽**，再用該時槽算視窗，而不是用實際執行時間。
    - **去重（無狀態）**：相鄰兩次視窗首尾相接，沒有縫隙也沒有重疊，每個時段的起點只會落在其中一個視窗，因此同一時段只會被通知一次；且只要這次執行落後不到 3 小時（GitHub 排程常有延遲），結果都相同，不會漏發。資料表不存「已通知」旗標。時段起點在整點、時槽在 :45，起點不會剛好壓在邊界上。
      - 例：06:00 起的時段屬於 05:45 時槽（視窗 05:45～08:45）。05:45 那次即使延遲到 06:25 才跑，仍以 05:45 為基準，照常涵蓋 06:00。
      - 限制：腳本內的時槽設定（`SLOT_ANCHOR`、`SLOT_INTERVAL`）與 workflow 的 `cron` 是同一件事的兩處寫法，修改排程時須一起改；延遲超過一個間隔（3 小時）或整個時槽被 GitHub 丟棄時，該時槽的告警不會補發（寧可漏、不重複）。
-   - 符合條件則格式化 Google Chat Card V2 JSON 並 `requests.post(GOOGLE_CHAT_WEBHOOK, json=payload)`。
+   - **推播管道為 Telegram**（`scripts/notifier.py`）：符合條件則組成純文字訊息（標題「🔔 天氣告警」、副標題「未來 3 小時內開始的時段，共 N 筆符合條件」、每筆一行 `縣市 MM/DD HH:MM 起｜降雨 X%｜最低~最高°C`，值為 NULL 顯示「—」），呼叫 `sendMessage` 傳給 `TELEGRAM_CHAT_ID`。
+   - **訊息格式**：以 HTML 模式送出（標題粗體），所有動態內容經過跳脫；Telegram 回 400（格式問題）時自動改用純文字重送一次。
+   - **筆數與字數上限**：最多列 30 筆且總長不超過 4000 字，超過的部分以「另有 N 筆未列出」取代（不再直接截掉）。
+   - **⚠️ token 不可外洩**：`requests` 的例外訊息會帶完整網址（網址含 token），而失敗訊息會寫進 `pipeline_status.last_error`（前端可讀）。因此推播失敗一律改寫為不含網址的訊息（如「Telegram 回應 401：…」「無法連線至 Telegram（ConnectionError）」），且記錄失敗原因前會遮蔽所有機密環境變數的值。
+   - **失敗處理**：未設定 `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` 時略過推播（不視為錯誤）；推播失敗時 workflow 標記失敗，但預報已寫入，`pipeline_status` 記錄 `failed` 與原因，不動 `last_success_at`。
+   - **沒有符合條件時不發訊息**。
 
 ---
 
@@ -455,7 +462,8 @@ jobs:
           WEATHER_API_KEY: ${{ secrets.WEATHER_API_KEY }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
-          GOOGLE_CHAT_WEBHOOK: ${{ secrets.GOOGLE_CHAT_WEBHOOK }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
           python scripts/fetch_and_store.py
 ```
@@ -586,7 +594,10 @@ HW1/                                     # repo 根目錄
     ├── scripts/
     │   ├── fetch_and_store.py           # 🌟 流程一：Python 打 API 取資料存 DB & 告警推播（支援 --dry-run / --from-sample）
     │   ├── check_cwa_api.py             # 驗證 CWA API 並存下範例回應到 samples/
-    │   └── check_rls.py                 # 驗證 RLS：anon 可讀不可寫、service_role 可寫
+    │   ├── check_rls.py                 # 驗證 RLS：anon 可讀不可寫、service_role 可寫
+    │   ├── notifier.py                  # Telegram 推播（訊息組合、跳脫、400 重送、token 不外洩）
+    │   ├── get_telegram_chat_id.py      # 查詢 TELEGRAM_CHAT_ID（token 只讀本機 .env）
+    │   └── test_notify.py               # 傳範例告警到 Telegram，確認推播設定與格式
     ├── streamlit_app/
     │   ├── app.py                       # 🌟 流程二：讀取 Supabase 渲染 Streamlit 儀表板
     │   └── components/
@@ -611,9 +622,9 @@ HW1/                                     # repo 根目錄
 | 里程碑 | 項目內容 | 核心對應 | 驗收標準 (Acceptance Criteria) |
 | :---: | :--- | :--- | :--- |
 | **M0** | **建立 GitHub Repo** | 專案結構 | 於 `HW1/` 初始化 git 並推送至 GitHub（`HW1/` 為 repo 根目錄，程式碼在 `forecast/`，見 §9），確認 `.github/workflows/` 位於 repo 根目錄。 |
-| **M1** | **金鑰與環境準備** | 安全配置 | 備妥 CWA API Key、Google Chat Webhook；註冊 Supabase 並建立免費專案取得 URL、`service_role` key、`anon` key；後端 Secrets 設定於 GitHub Secrets 與本地 `.env`。 |
+| **M1** | **金鑰與環境準備** | 安全配置 | 備妥 CWA API Key、Telegram 機器人 token 與 chat_id；註冊 Supabase 並建立免費專案取得 URL、`service_role` key、`anon` key；後端 Secrets 設定於 GitHub Secrets 與本地 `.env`。 |
 | **M2** | **資料庫綱要建立** | 儲存層 | 於雲端 Supabase 執行 `init_supabase.sql` 建立 `weather_forecasts` 表與 RLS；以 `anon` key 驗證可讀取、不可寫入。 |
-| **M3** | **流程一實作** | **Python 打 API 存 DB** | （`F-D0047-091` 實際回應結構已於 §3.3 驗證）`fetch_and_store.py` 成功抓取一週預報、清洗入庫，並於排程時槽內即將開始（3 小時內）的時段 PoP $\ge 60\%$ 時推播 Google Chat（僅排程推播，手動不推播）。 |
+| **M3** | **流程一實作** | **Python 打 API 存 DB** | （`F-D0047-091` 實際回應結構已於 §3.3 驗證）`fetch_and_store.py` 成功抓取一週預報、清洗入庫，並於排程時槽內即將開始（3 小時內）的時段 PoP $\ge 60\%$ 時推播 Telegram（僅排程推播，手動不推播）。 |
 | **M4** | **GitHub Actions 自動化** | 排程管線 | `.github/workflows/weather_worker.yml` 依排程與手動觸發成功執行流程一，資料寫入 Supabase，密鑰皆來自 GitHub Secrets。 |
 | **M5** | **Streamlit 讀 DB 渲染** | 前端呈現 | Streamlit 儀表板以 `supabase-py`（或 `psycopg2`）成功讀取 Supabase，完整呈現地圖、折線圖與明細表格，並含「立即更新」按鈕。 |
 | **M6** | **部署至 Streamlit Community Cloud** | 前端上線 | 於 Streamlit Community Cloud 部署成功，Secrets 設定完成，公開網址可正常顯示最新資料。 |
@@ -625,7 +636,7 @@ HW1/                                     # repo 根目錄
 | 里程碑 | 狀態 | 備註 |
 | :---: | :---: | :--- |
 | M0 | ✅ 完成 | repo：`hobartXIII/tw_forecast`，根目錄 `HW1/` |
-| M1 | ⚠️ 部分完成 | CWA、Supabase 金鑰已備妥；**`GOOGLE_CHAT_WEBHOOK` 尚未設定**，告警目前不會推播（腳本會略過） |
+| M1 | ⚠️ 部分完成 | CWA、Supabase 金鑰已備妥；推播管道由 Google Chat 改為 **Telegram**（個人 Gmail 無法使用 Google Chat webhook 與 API，官方文件要求 Business/Enterprise Workspace）。本機已備妥 token，**GitHub Secrets 的 `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` 尚未設定**，告警目前不會推播（腳本會略過） |
 | M2 | ✅ 完成 | `weather_forecasts`（含 `updated_at`、觸發器、`Asia/Taipei` 時區）與 `pipeline_status`（排程、手動各一列）皆已建立；`check_rls.py` 已於 2026-09-20 執行，兩張表的驗證全數通過（`anon` 可讀；新增、更新、刪除皆被拒絕），未留下測試殘留 |
 | M3 | ✅ 完成 | 推播邏輯已實作，待設定 webhook 後實際驗證 |
 | M4 | ✅ 完成 | 手動觸發與**自動排程皆已實際成功**：`cron`（台灣時間 02:45 起每 3 小時）於 2026-09-20 20:55 自動觸發（`schedule` 事件，較預定時槽 20:45 延遲約 10 分鐘），成功寫入預報，並更新 `pipeline_status` 的 `schedule` 列（`last_success_at` = 20:56）。目前只觀察到這一次排程，後續時槽尚待觀察 |
@@ -634,12 +645,13 @@ HW1/                                     # repo 根目錄
 
 ### 10.2 待辦
 - 持續觀察後續排程時槽（如 23:45、02:45）是否穩定自動觸發，且每次都更新 `pipeline_status` 的 `schedule` 列。
-- 設定 `GOOGLE_CHAT_WEBHOOK` 並驗證告警推播。
+- 取得 `TELEGRAM_CHAT_ID`（對機器人按 Start 後執行 `python scripts/get_telegram_chat_id.py`），用 `python scripts/test_notify.py` 確認手機收得到；再把兩個值設定到 GitHub Secrets，並驗證排程實際推播。
 - （建議，低優先）「立即更新」觸發 GitHub 時，成功條件目前只認 HTTP 204；官方文件現只列 200；按鈕流程實測正常，由此推論目前實際回應為 204（未直接記錄回應碼）。可改為 200 或 204 都算成功，避免 GitHub 日後調整造成誤判「觸發失敗」。
 - 重新繪製 `architecture_diagram.svg`、`sequence_diagram.svg`（仍為 v1.1.0 版本）。
 - 將 workflow 的 `actions/checkout`、`actions/setup-python` 升級，消除 Node.js 20 deprecated 警告。
 
 ### 10.3 版本紀錄
+- **v1.6.0**：推播管道由 Google Chat 改為 Telegram（個人 Gmail 無法使用 Google Chat webhook／API）；訊息改為純文字（HTML 模式加跳脫，400 時純文字重送），超過上限顯示「另有 N 筆未列出」；推播失敗訊息與 `pipeline_status` 記錄一律不含 token；新增 `notifier.py`、`get_telegram_chat_id.py`、`test_notify.py`。
 - **v1.5.0**：地區與縣市下拉改為互斥（選其一會清除另一個），縣市選單固定 22 縣市；全台／地區層級於明細右邊新增「後續時段」分頁（每縣市目前時段之後 2 個時段，依縣市、時間排序）；單一縣市的降雨機率長條圖改為與地區一致的折線圖；氣象署未提供的降雨機率在圖上補 0 並以空心點與提示標示；天氣圖示依日夜區分（夜間不使用太陽圖示）。
 - **v1.4.0**：排程改為台灣時間 02:45 起每 3 小時（`45 */3 * * *`）；新增 `pipeline_status` 表記錄排程與手動各自最後成功更新的時間；手動更新須距上次成功更新滿 20 分鐘（一律以該表判斷，讀不到不放行，排程不受影響），觸發後 60 秒自動重整頁面；告警改為只由排程推播，並以排程時槽計算視窗（延遲不漏發、不重複）。
 - **v1.3.0**：資料表新增 `updated_at`（建立／更新時間）與資料庫時區 `Asia/Taipei`；前端「只取最新批次」以避免重疊時段；地區／縣市連動篩選、重點摘要、多系列趨勢圖、降雨機率圖、關閉滾輪縮放；`requirements.txt` 移至 repo 根目錄；repo 根目錄改為 `HW1/`。
@@ -647,4 +659,4 @@ HW1/                                     # repo 根目錄
 
 ---
 
-*本規格書目前為 v1.5.0。*
+*本規格書目前為 v1.6.0。*
