@@ -27,6 +27,11 @@ def temp_color(temp: float) -> str:
     return BANDS[_band(temp)][0]
 
 
+def _temp_text(value, unit: str = "°C") -> str:
+    """整數溫度；NULL 顯示「—」。"""
+    return "—" if pd.isna(value) else f"{value:.0f}{unit}"
+
+
 def display_temp(df: pd.DataFrame) -> pd.Series:
     """avg_temp 為 NULL 時退回 (min_temp + max_temp) / 2。"""
     return df["avg_temp"].fillna((df["min_temp"] + df["max_temp"]) / 2)
@@ -67,7 +72,8 @@ def build_map(df: pd.DataFrame, fit: bool = False, highlight: str | None = None)
         weather = row.get("weather_condition")
         night = "forecast_time_start" in row and is_night(row["forecast_time_start"], row["forecast_time_end"])
         tip = (f"<b>{row['location_name']}</b><br>{weather_icon(weather, night)} {weather or '—'}<br>"
-               f"平均 {temp:.1f}°C（{row['min_temp']:.0f}~{row['max_temp']:.0f}）<br>降雨機率 {rain}")
+               f"平均 {temp:.1f}°C<br>最高 {_temp_text(row['max_temp'])} ｜ 最低 {_temp_text(row['min_temp'])}<br>"
+               f"降雨機率 {rain}")
         state = "normal" if highlight is None else ("selected" if row["location_name"] == highlight else "dim")
         half = 23 if state == "selected" else 19
         folium.Marker(
