@@ -10,8 +10,8 @@ import streamlit as st
 from streamlit_folium import st_folium
 
 from components import db
-from components.charts import RAIN_ALERT, rain_chart, series_chart, temp_trend_chart
-from components.format import weather_icon
+from components.charts import RAIN_ALERT, series_chart, temp_trend_chart
+from components.format import is_night, weather_icon
 from components.map_view import build_map, display_temp
 from components.region_data import ALL_REGIONS, CITY_ORDER, REGIONS, cities_in, region_of
 from components.update_gate import MIN_INTERVAL_MINUTES, evaluate
@@ -148,15 +148,24 @@ current = add_region(current)
 if not forecast.empty:  # 資料過期（排程停擺）時 forecast 可能為空
     forecast = add_region(forecast)
 
-# ---------- 篩選（地區 → 縣市連動；整頁內容跟著選擇更新） ----------
+# ---------- 篩選（地區與縣市互斥；整頁內容跟著選擇更新） ----------
+def _on_region_change() -> None:
+    st.session_state["city"] = ALL_CITIES  # 選地區 → 縣市回到「全部縣市」
+
+
+def _on_city_change() -> None:
+    st.session_state["region"] = ALL_REGIONS  # 選縣市 → 地區回到「全部地區」
+
+
 sel_left, sel_right = st.columns(2)
-region = sel_left.selectbox("地區", [ALL_REGIONS, *REGIONS], key="region")
-region_cities = cities_in(region)
-# 換地區後，原本選的縣市若不在新地區，Streamlit 會自動回到「全部縣市」
-city_choice = sel_right.selectbox("縣市", [ALL_CITIES, *region_cities], key="city")
+region = sel_left.selectbox("地區", [ALL_REGIONS, *REGIONS], key="region", on_change=_on_region_change)
+city_choice = sel_right.selectbox("縣市", [ALL_CITIES, *CITY_ORDER], key="city", on_change=_on_city_change)
 city = None if city_choice == ALL_CITIES else city_choice
 # 顯示層級：全台（依地區平均）→ 地區（依縣市）→ 單一縣市（依時段）
 level = "city" if city else ("all" if region == ALL_REGIONS else "region")
+# 單一縣市時，地圖與對照範圍用該縣市所屬的地區（地區下拉已被清成「全部地區」）
+home_region = region_of(city) if city else None
+region_cities = cities_in(home_region) if home_region else cities_in(region)
 
 cur = current[current["location_name"].isin(region_cities)].sort_values("order")
 if cur.empty:
@@ -191,8 +200,8 @@ def show(value, unit: str, fmt: str = ".0f") -> str:
 k1, k2, k3, k4 = st.columns(4)
 if city:  # 單一縣市：直接呈現該縣市自己的數值，天氣現象放在「平均氣溫」下方
     weather = crow["weather_condition"] if isinstance(crow["weather_condition"], str) else "—"
-    k1.metric(f"{city} 平均氣溫", show(crow["avg"], "°C", ".1f"), f"{weather_icon(weather)} {weather}".strip(),
-              delta_color="off")
+    icon = weather_icon(weather, is_night(crow["forecast_time_start"], crow["forecast_time_end"]))
+    k1.metric(f"{city} 平均氣溫", show(crow["avg"], "°C", ".1f"), f"{icon} {weather}".strip(), delta_color="off")
     k2.metric("最高溫", show(crow["max_temp"], "°C"))
     k3.metric("最低溫", show(crow["min_temp"], "°C"))
     k4.metric("降雨機率", show(crow["rain_probability"], "%"))
@@ -208,7 +217,7 @@ else:
 # ---------- 地圖 ----------
 st.subheader("🗺️ 平均氣溫地圖")
 st.caption("滾輪縮放已關閉，請用地圖左上角的 ＋／－ 按鈕縮放，並可拖曳平移；滑鼠移到標記上可看詳細資料。"
-           + ("被選的縣市已放大並加外框，其餘縣市淡化作為對照。" if city else ""))
+           + (f"被選的縣市已放大並加外框，其餘{home_region or ''}縣市淡化作為對照。" if city else ""))
 st_folium(build_map(cur, fit=level == "region", highlight=city), height=520,
           use_container_width=True, returned_objects=[])
 
@@ -222,7 +231,7 @@ scope_label = {"all": "全台各地區平均", "region": f"{region}各縣市", "
 
 
 def series_data(column: str) -> tuple[pd.DataFrame, list[str]]:
-    """多系列長表與圖例順序：全台 → 每地區平均一條線；單一地區 → 每縣市一條線。"""
+    """多系列長表與圖例順序：全台 → 每地區平均一條線；單一地區 → 每縣市一條線；單一縣市 → 一條線。"""
     key = "region" if level == "all" else "location_name"
     data = (fc.groupby([key, "forecast_time_start"], as_index=False)[column].mean()
               .rename(columns={key: "系列", column: "值"}))
@@ -230,8 +239,49 @@ def series_data(column: str) -> tuple[pd.DataFrame, list[str]]:
     return data, order
 
 
-tab_labels = ["📈 氣溫趨勢", "🌧️ 降雨機率", "📋 各時段預報" if city else "📋 目前時段明細"]
-tab_temp, tab_rain, tab_table = st.tabs(tab_labels)
+def next_periods(n: int = 2) -> pd.DataFrame:
+    """每個縣市「目前時段」之後的 n 個時段，依縣市（地區順序）→ 時間排序。"""
+    later = (fc[fc["forecast_time_start"] > start]
+             .sort_values(["order", "forecast_time_start"]).groupby("location_name", sort=False).head(n).copy())
+    later["階段"] = later.groupby("location_name", sort=False).cumcount().map({0: "下一時段", 1: "再下一時段"})
+    return later
+
+
+def make_table(src: pd.DataFrame, *, dated: bool, stage: bool = False) -> pd.DataFrame:
+    """明細表格。天氣現象的圖示依每列自己的時段判斷日夜。"""
+    period = [f"{s:%m/%d %H:%M}~{e:%H:%M}" if dated else f"{s:%H:%M}~{e:%H:%M}"
+              for s, e in zip(src["forecast_time_start"], src["forecast_time_end"])]
+    weather = [f"{weather_icon(w, is_night(s, e))} {w}".strip() if isinstance(w, str) else "—"
+               for w, s, e in zip(src["weather_condition"], src["forecast_time_start"], src["forecast_time_end"])]
+    columns = {"縣市": src["location_name"], "地區": src["region"]}
+    if stage:
+        columns["階段"] = src["階段"]
+    columns.update({
+        "時段": period, "天氣現象": weather,
+        "最低 (°C)": src["min_temp"], "最高 (°C)": src["max_temp"], "平均 (°C)": src["avg"].round(1),
+        "降雨機率": src["rain_probability"], "舒適度": src["comfort_index"].fillna("—"),
+    })
+    return pd.DataFrame(columns).reset_index(drop=True)
+
+
+def show_table(table: pd.DataFrame, drop: list[str]) -> None:
+    st.dataframe(
+        table.drop(columns=drop), width="stretch", hide_index=True,
+        column_config={
+            "最低 (°C)": st.column_config.NumberColumn(format="%.0f"),
+            "最高 (°C)": st.column_config.NumberColumn(format="%.0f"),
+            "平均 (°C)": st.column_config.NumberColumn(format="%.1f"),
+            "降雨機率": st.column_config.ProgressColumn(format="%d%%", min_value=0, max_value=100),
+        })
+    st.caption("點欄位標題可排序；降雨機率為空白表示氣象署該時段未提供；天氣圖示依時段區分日間（☀️）與夜間（🌙）。")
+
+
+if city:
+    tab_temp, tab_rain, tab_table = st.tabs(["📈 氣溫趨勢", "🌧️ 降雨機率", "📋 各時段預報"])
+    tab_next = None
+else:  # 全台／地區：明細右邊多一個「後續時段」分頁
+    tab_temp, tab_rain, tab_table, tab_next = st.tabs(
+        ["📈 氣溫趨勢", "🌧️ 降雨機率", "📋 目前時段明細", "🕒 後續時段"])
 
 with tab_temp:
     if fc is None:
@@ -252,49 +302,31 @@ with tab_temp:
         else:
             st.altair_chart(series_chart(data, now, f"{metric_label} (°C)", order), width="stretch")
 
-with tab_rain:
+with tab_rain:  # 全台／地區／單一縣市都用同一種折線圖（單一縣市只有一條線）
     if fc is None or fc["rain_probability"].dropna().empty:
         st.info("沒有降雨機率資料（遠期時段氣象署未提供）。")
-    elif level == "city":
-        st.caption(f"{scope_label}｜12 小時降雨機率（紅色為 ≥ {RAIN_ALERT}%，即告警門檻）")
-        st.altair_chart(rain_chart(fc, now), width="stretch")
     else:
         st.caption(f"{scope_label}｜12 小時降雨機率（紅色虛線為 {RAIN_ALERT}% 告警門檻，超過者的點放大並加紅框）")
         data, order = series_data("rain_probability")
-        st.altair_chart(series_chart(data, now, "降雨機率 (%)", order, zero=True, threshold=RAIN_ALERT),
-                        width="stretch")
-    st.caption("氣象署僅提供近期時段的降雨機率，遠期時段無資料時不會出現在圖上。")
+        st.altair_chart(series_chart(data, now, "降雨機率 (%)", order, zero=True, threshold=RAIN_ALERT,
+                                     fill_zero=True), width="stretch")
+    st.caption("空心點：氣象署未提供該時段的降雨機率（通常是遠期），圖上以 0 顯示，並非預報 0%；"
+               "明細表格與摘要仍顯示為「—」。")
 
 with tab_table:
     if city:  # 單一縣市：列出該縣市所有尚未結束的時段，與趨勢圖對照
         if fc is None:
             st.info("沒有未來預報資料（資料可能已過期），請按「立即更新」。")
-            src = None
         else:
-            src = fc.sort_values("forecast_time_start")
+            show_table(make_table(fc.sort_values("forecast_time_start"), dated=True), ["縣市", "地區"])
     else:
-        src = cur
-    if src is not None:
-        table = pd.DataFrame({
-            "縣市": src["location_name"],
-            "地區": src["region"],
-            "時段": [f"{s:%m/%d %H:%M}~{e:%H:%M}" if city else f"{s:%H:%M}~{e:%H:%M}"
-                     for s, e in zip(src["forecast_time_start"], src["forecast_time_end"])],
-            "天氣現象": [f"{weather_icon(w)} {w}".strip() if isinstance(w, str) else "—"
-                         for w in src["weather_condition"]],
-            "最低 (°C)": src["min_temp"],
-            "最高 (°C)": src["max_temp"],
-            "平均 (°C)": src["avg"].round(1),
-            "降雨機率": src["rain_probability"],
-            "舒適度": src["comfort_index"].fillna("—"),
-        }).reset_index(drop=True)
-        drop = ["縣市", "地區"] if city else (["地區"] if region != ALL_REGIONS else [])
-        st.dataframe(
-            table.drop(columns=drop), width="stretch", hide_index=True,
-            column_config={
-                "最低 (°C)": st.column_config.NumberColumn(format="%.0f"),
-                "最高 (°C)": st.column_config.NumberColumn(format="%.0f"),
-                "平均 (°C)": st.column_config.NumberColumn(format="%.1f"),
-                "降雨機率": st.column_config.ProgressColumn(format="%d%%", min_value=0, max_value=100),
-            })
-        st.caption("點欄位標題可排序；降雨機率為空白表示氣象署該時段未提供。")
+        show_table(make_table(cur, dated=False), ["地區"] if region != ALL_REGIONS else [])
+
+if tab_next is not None:
+    with tab_next:
+        st.caption(f"{scope_label}｜每個縣市「目前時段」之後的 2 個時段（依縣市、時間排序）")
+        later = next_periods() if fc is not None else None
+        if later is None or later.empty:
+            st.info("沒有後續時段的預報資料（資料可能已過期），請按「立即更新」。")
+        else:
+            show_table(make_table(later, dated=True, stage=True), ["地區"] if region != ALL_REGIONS else [])

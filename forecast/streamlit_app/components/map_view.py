@@ -2,7 +2,7 @@
 import folium
 import pandas as pd
 
-from .format import weather_icon
+from .format import is_night, weather_icon
 
 # (顏色, 圖例文字)；規格 §8.1：<20 藍綠、20~25 綠、25~30 橙黃、>30 鮮紅
 BANDS = [
@@ -65,7 +65,8 @@ def build_map(df: pd.DataFrame, fit: bool = False, highlight: str | None = None)
             continue
         rain = "—" if pd.isna(row.get("rain_probability")) else f"{int(row['rain_probability'])}%"
         weather = row.get("weather_condition")
-        tip = (f"<b>{row['location_name']}</b><br>{weather_icon(weather)} {weather or '—'}<br>"
+        night = "forecast_time_start" in row and is_night(row["forecast_time_start"], row["forecast_time_end"])
+        tip = (f"<b>{row['location_name']}</b><br>{weather_icon(weather, night)} {weather or '—'}<br>"
                f"平均 {temp:.1f}°C（{row['min_temp']:.0f}~{row['max_temp']:.0f}）<br>降雨機率 {rain}")
         state = "normal" if highlight is None else ("selected" if row["location_name"] == highlight else "dim")
         half = 23 if state == "selected" else 19

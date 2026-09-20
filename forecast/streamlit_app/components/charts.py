@@ -1,7 +1,8 @@
 """一週趨勢圖：氣溫（最高/最低）與降雨機率。時間軸一律以台灣當地時間顯示。
 
-- 單一縣市：最高/最低雙線加灰色範圍帶（氣溫）、長條圖（降雨機率）。
-- 多個縣市/地區：每個系列一種顏色的折線，可點圖例強調單一系列。
+- 單一縣市氣溫：最高/最低雙線加灰色範圍帶（temp_trend_chart）。
+- 降雨機率與多縣市/多地區氣溫：每個系列一種顏色的折線（series_chart），可點圖例強調單一系列；
+  單一縣市的降雨機率也是同樣的折線，只有一個系列。
 """
 import altair as alt
 import pandas as pd
@@ -53,54 +54,54 @@ def temp_trend_chart(df: pd.DataFrame, now) -> alt.LayerChart:
     return alt.layer(*layers).properties(height=320)
 
 
-def rain_chart(df: pd.DataFrame, now) -> alt.LayerChart:
-    """降雨機率長條圖（>= 告警門檻者標紅），df 需含 forecast_time_start、rain_probability。"""
-    data = pd.DataFrame({"時段": _naive(df["forecast_time_start"]), "降雨機率 (%)": df["rain_probability"]})
-    data = data.dropna()
-    bars = (alt.Chart(data).mark_bar(size=16)
-            .encode(x=alt.X("時段:T", title=None, axis=X_AXIS),
-                    y=alt.Y("降雨機率 (%):Q", scale=alt.Scale(domain=[0, 100])),
-                    color=alt.condition(alt.datum["降雨機率 (%)"] >= RAIN_ALERT,
-                                        alt.value("#e03131"), alt.value("#4dabf7")),
-                    tooltip=[alt.Tooltip("時段:T", format="%m/%d %H:%M"), "降雨機率 (%):Q"]))
-    threshold = (alt.Chart(pd.DataFrame({"y": [RAIN_ALERT]}))
-                 .mark_rule(strokeDash=[6, 4], color="#e03131", opacity=0.6).encode(y="y:Q"))
-    layers = [bars, threshold]
-    rule = _now_rule(data["時段"], now)
-    if rule is not None:
-        layers.append(rule)
-    return alt.layer(*layers).properties(height=320)
+MISSING_TIP = "0（氣象署未提供，以 0 顯示）"
 
 
 def series_chart(data: pd.DataFrame, now, y_title: str, order: list[str],
-                 zero: bool = False, threshold: float | None = None) -> alt.LayerChart:
+                 zero: bool = False, threshold: float | None = None,
+                 fill_zero: bool = False) -> alt.LayerChart:
     """多系列折線圖。data 需含 forecast_time_start (tz-aware)、系列、值；order 決定顏色與圖例順序。
 
     threshold 有值時（降雨機率）畫出門檻虛線，並把 >= 門檻的點放大加紅框。
+    fill_zero=True 時，值為 NaN（來源未提供）的時段補 0 並以空心點標示、提示「氣象署未提供」；
+    否則這些時段不畫。
     """
-    d = data.dropna(subset=["值"]).copy()
+    d = data.copy()
+    d["未提供"] = d["值"].isna()
+    if fill_zero:
+        d["值"] = d["值"].fillna(0)
+    else:
+        d = d[~d["未提供"]]
     d["時段"] = _naive(d["forecast_time_start"])
-    d = d[["時段", "系列", "值"]]
+    fmt = "{:.0f}" if threshold is not None else "{:.1f}"
+    d["顯示"] = [MISSING_TIP if m else fmt.format(v) for m, v in zip(d["未提供"], d["值"])]
+    d = d[["時段", "系列", "值", "未提供", "顯示"]]
+
     select = alt.selection_point(fields=["系列"], bind="legend")
-    color = alt.Color("系列:N", scale=alt.Scale(domain=order, range=PALETTE[:len(order)]),
-                      legend=alt.Legend(title=None, orient="top"))
+    scale = alt.Scale(domain=order, range=PALETTE[:len(order)])
+    color = alt.Color("系列:N", scale=scale, legend=alt.Legend(title=None, orient="top"))
+    series_color = alt.Color("系列:N", scale=scale, legend=None)  # 點用，避免重複圖例
     x = alt.X("時段:T", title=None, axis=X_AXIS)
     y = alt.Y("值:Q", title=y_title,
               scale=alt.Scale(zero=zero, domain=[0, 100] if threshold is not None else alt.Undefined))
     opacity = alt.condition(select, alt.value(1), alt.value(0.15))
-    tooltip = ["系列:N", alt.Tooltip("時段:T", format="%m/%d %H:%M"), alt.Tooltip("值:Q", title=y_title, format=".1f")]
-    lines = alt.Chart(d).mark_line(strokeWidth=2.5, strokeJoin="round").encode(x=x, y=y, color=color, opacity=opacity)
+    tooltip = ["系列:N", alt.Tooltip("時段:T", format="%m/%d %H:%M"), alt.Tooltip("顯示:N", title=y_title)]
+
+    lines = alt.Chart(d).mark_line(strokeWidth=2.5, strokeJoin="round").encode(
+        x=x, y=y, color=color, opacity=opacity)
+    real, missing = d[~d["未提供"]], d[d["未提供"]]
     if threshold is None:
-        points = alt.Chart(d).mark_point(filled=True, size=45).encode(
-            x=x, y=y, color=color, opacity=opacity, tooltip=tooltip)
+        size, stroke = alt.value(45), alt.value("white")
     else:
         over = alt.datum["值"] >= threshold
-        points = alt.Chart(d).mark_point(filled=True).encode(
-            x=x, y=y, color=color, opacity=opacity, tooltip=tooltip,
-            size=alt.condition(over, alt.value(160), alt.value(45)),
-            stroke=alt.condition(over, alt.value("#c92a2a"), alt.value("white")),
-            strokeWidth=alt.value(2))
-    layers = [lines, points]
+        size = alt.condition(over, alt.value(160), alt.value(45))
+        stroke = alt.condition(over, alt.value("#c92a2a"), alt.value("white"))
+    layers = [lines, alt.Chart(real).mark_point(filled=True).encode(
+        x=x, y=y, color=series_color, size=size, stroke=stroke, strokeWidth=alt.value(2),
+        opacity=opacity, tooltip=tooltip)]
+    if not missing.empty:  # 補值的點畫成空心（白底＋系列色外框），一眼看得出不是真的預報值
+        layers.append(alt.Chart(missing).mark_point(filled=False, fill="white", size=45, strokeWidth=2).encode(
+            x=x, y=y, color=series_color, opacity=opacity, tooltip=tooltip))
     if threshold is not None:
         layers.append(alt.Chart(pd.DataFrame({"y": [threshold]}))
                       .mark_rule(strokeDash=[6, 4], color="#c92a2a", opacity=0.6).encode(y="y:Q"))
