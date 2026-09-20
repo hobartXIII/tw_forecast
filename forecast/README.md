@@ -10,7 +10,7 @@
 ## 功能
 
 - **後端**：GitHub Actions 於台灣時間 02:45 起每 3 小時（02:45、05:45、08:45……）自動執行，也可手動觸發；抓取預報、清洗後 upsert 至 Supabase，記錄 `updated_at`，並把最後成功更新時間寫入 `pipeline_status`。
-- **告警**：只有排程會推播 Telegram（時段起點落在該次排程時槽後 3 小時內，且降雨機率 ≥ 60% 或極端溫度）；手動更新只更新資料、不推播。以排程時槽計算視窗，排程被 GitHub 延遲也不會漏發或重複。
+- **告警**：只有排程會推播 Telegram，且只在你啟用的發送時段（08:45、14:45、20:45）發送；**預設所有縣市關閉（不發送）**。每個縣市可各自設定降雨／低溫／高溫三個條件的開關與門檻（預設 60％／12°C／35°C）。手動更新只更新資料、不推播。設定存在資料庫，`anon` 讀不到也寫不了；目前用 Supabase SQL Editor 調整（見下方「啟用告警」），之後會提供需輸入密碼的設定頁面。
 - **前端**：地區／縣市互斥篩選（選其一會清除另一個）；重點摘要；Folium 地圖（標記顯示溫度，滾輪縮放已關閉，以 ＋／－ 按鈕縮放）；氣溫與降雨機率趨勢圖（全台依地區、地區依縣市各一種顏色，氣象署未提供的降雨機率補 0 並以空心點標示）；明細表格與「後續時段」（每縣市目前時段之後 2 個時段）；天氣圖示區分日夜；「立即更新」按鈕：距上次成功更新（排程或手動，以 `pipeline_status` 為準）滿 20 分鐘才可按，觸發後 60 秒自動重整頁面；排程不受此限制。
 
 ## 目錄結構
@@ -52,13 +52,21 @@ HW1/
    2. 打開你的機器人，按 **Start**（機器人必須先被你啟動才能傳訊息給你）。
    3. 取得 chat_id：`python scripts/get_telegram_chat_id.py`（加 `--write` 可自動寫入 `.env`）。
    4. 確認手機收得到：`python scripts/test_notify.py`（加 `--dry-run` 只印出訊息內容）。
-6. 試跑流程一（不寫入資料庫、不推播）：
+6. 啟用告警（在 Supabase SQL Editor 執行；範例也在 `sql/init_supabase.sql` 檔尾）：
+   ```sql
+   UPDATE public.alert_city_settings SET enabled = true WHERE location_name = '臺北市';          -- 啟用臺北市
+   UPDATE public.alert_city_settings SET rain_threshold = 0 WHERE location_name = '臺北市';       -- 降雨門檻 0：一定符合，用來測試推播
+   UPDATE public.alert_city_settings SET min_temp_enabled = false WHERE location_name = '臺北市'; -- 關閉低溫條件
+   UPDATE public.alert_slot_settings SET enabled = false WHERE slot = '14:45';                  -- 不在 14:45 發送
+   ```
+   設定在下一個排程時槽生效。判斷視窗為「本次發送時槽到下一個啟用的發送時槽之前」，含進行中的預報時段（訊息標示進行中／即將開始）。
+7. 試跑流程一（不寫入資料庫、不推播）：
    ```powershell
    python scripts/fetch_and_store.py --dry-run                 # 打 API
    python scripts/fetch_and_store.py --dry-run --from-sample   # 讀 samples/ 離線測試
    python scripts/fetch_and_store.py                           # 正式：寫入 Supabase（本機視為手動，不推播；要測推播可設 GITHUB_EVENT_NAME=schedule）
    ```
-7. 前端本機執行：複製 `.streamlit/secrets.toml.example` 為 `.streamlit/secrets.toml`，填入 `SUPABASE_URL` 與 `SUPABASE_ANON_KEY`（**只放 `anon` key，不可放 `service_role`**），再啟動：
+8. 前端本機執行：複製 `.streamlit/secrets.toml.example` 為 `.streamlit/secrets.toml`，填入 `SUPABASE_URL` 與 `SUPABASE_ANON_KEY`（**只放 `anon` key，不可放 `service_role`**），再啟動：
    ```powershell
    streamlit run streamlit_app/app.py         # http://localhost:8501
    ```
@@ -77,6 +85,7 @@ HW1/
 
 | 現象 | 原因與處理 |
 | :--- | :--- |
+| 啟用了縣市卻收不到告警 | 依序確認：① 已在 Supabase 執行新版 `init_supabase.sql`；② 該縣市 `enabled = true`；③ 目前排程時槽在啟用的發送時段（08:45／14:45／20:45）；④ 條件有符合（可暫時把降雨門檻設為 0 測試）；⑤ GitHub Secrets 有 `TELEGRAM_BOT_TOKEN`、`TELEGRAM_CHAT_ID`。日誌會寫明略過的原因。 |
 | 「立即更新」按鈕是灰的 | 距上次成功更新不滿 20 分鐘（畫面會顯示還需等幾分鐘），或讀不到 `pipeline_status`（未執行新的 SQL、資料庫連線問題）而一律不放行。排程不受影響。 |
 | `ModuleNotFoundError: streamlit_folium` | Streamlit Cloud 找不到 `requirements.txt`。它只找主程式所在目錄與 repo 根目錄，須放在根目錄。 |
 | 「尚未設定 SUPABASE_URL / SUPABASE_ANON_KEY」 | 雲端要在 Secrets 設定；本機要建立 `.streamlit/secrets.toml`（不會被 commit）。 |

@@ -26,15 +26,23 @@ def _num(value, unit: str = "") -> str:
 
 
 def _line(row: dict) -> str:
+    """縣市 起~迄 進行中/即將開始｜降雨｜氣溫。沒有 forecast_time_end / label 的列（如舊資料）只顯示起點。"""
     start = datetime.fromisoformat(row["forecast_time_start"]).astimezone(TZ)
-    return (f"{row['location_name']} {start:%m/%d %H:%M} 起｜降雨 {_num(row.get('rain_probability'), '%')}｜"
+    period = f"{start:%m/%d %H:%M}"
+    if row.get("forecast_time_end"):
+        period += f"~{datetime.fromisoformat(row['forecast_time_end']).astimezone(TZ):%H:%M}"
+    label = f" {row['label']}" if row.get("label") else ""
+    return (f"{row['location_name']} {period}{label}｜降雨 {_num(row.get('rain_probability'), '%')}｜"
             f"{_num(row.get('min_temp'))}~{_num(row.get('max_temp'), '°C')}")
 
 
-def build_alert_text(rows: list[dict], window_hours: int, title: str = "🔔 天氣告警",
+def build_alert_text(rows: list[dict], scope: str, title: str = "🔔 天氣告警",
                      max_lines: int = MAX_LINES) -> tuple[str, str]:
-    """回傳 (HTML 版, 純文字版)。超過筆數或字數上限的部分以「另有 N 筆未列出」取代。"""
-    subtitle = f"未來 {window_hours} 小時內開始的時段，共 {len(rows)} 筆符合條件"
+    """回傳 (HTML 版, 純文字版)。scope 說明涵蓋範圍（如「涵蓋 09/21 08:45～14:45」）。
+
+    超過筆數或字數上限的部分以「另有 N 筆未列出」取代。
+    """
+    subtitle = f"{scope}，共 {len(rows)} 筆符合條件"
     lines, used = [], len(title) + len(subtitle) + 40  # 40 = 「另有 N 筆」與換行的預留
     for row in rows[:max_lines]:
         line = _line(row)
@@ -77,6 +85,6 @@ def send_telegram(rich: str, plain: str, token: str, chat_id: str) -> None:
         raise NotifyError(f"Telegram 回應 {resp.status_code}：{_describe(resp, token)}")
 
 
-def notify_alerts(rows: list[dict], window_hours: int, token: str, chat_id: str, title: str = "🔔 天氣告警") -> None:
-    rich, plain = build_alert_text(rows, window_hours, title=title)
+def notify_alerts(rows: list[dict], scope: str, token: str, chat_id: str, title: str = "🔔 天氣告警") -> None:
+    rich, plain = build_alert_text(rows, scope, title=title)
     send_telegram(rich, plain, token, chat_id)

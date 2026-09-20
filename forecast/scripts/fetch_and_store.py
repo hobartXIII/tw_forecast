@@ -6,8 +6,8 @@
     python scripts/fetch_and_store.py --dry-run --from-sample   # 讀 samples/ 離線測試
 
 執行來源由 GitHub Actions 的 GITHUB_EVENT_NAME 判斷：schedule 為排程，其餘（workflow_dispatch、本機）
-視為手動。只有排程會推播告警（Telegram）；手動與本機只更新資料。要在本機測試推播，可設 GITHUB_EVENT_NAME=schedule，
-或直接用 scripts/test_notify.py 傳範例訊息。
+視為手動。只有排程會推播告警（Telegram）；手動與本機只更新資料。告警的縣市、條件與發送時段由資料庫設定
+（alert_city_settings / alert_slot_settings，預設全部縣市關閉＝不發送）；要測試推播格式可用 scripts/test_notify.py。
 """
 import argparse
 import json
@@ -21,6 +21,7 @@ from pathlib import Path
 import requests
 from dotenv import load_dotenv
 
+import alert_rules
 import notifier
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -31,14 +32,10 @@ CWA_URL = f"https://opendata.cwa.gov.tw/api/v1/rest/datastore/{DATASET}"
 SAMPLE_PATH = ROOT / "samples" / f"{DATASET}.json"
 TZ = timezone(timedelta(hours=8))  # 台灣時間 (UTC+8)，不依賴系統時區
 
-# 告警門檻與範圍 (SPECIFICATION.md §6.1)
-ALERT_RAIN = 60
-ALERT_MIN_TEMP = 12
-ALERT_MAX_TEMP = 35
 # 排程時槽：台灣時間 02:45 起每 3 小時。⚠️ 須與 .github/workflows/weather_worker.yml 的 cron `45 */3 * * *` 一致。
+# 告警的條件、縣市與發送時段（08:45 / 14:45 / 20:45）由資料庫設定，見 alert_rules.py。
 SLOT_ANCHOR = (2, 45)
 SLOT_INTERVAL = timedelta(hours=3)
-ALERT_WINDOW = SLOT_INTERVAL  # 時段起點落在 (時槽, 時槽+3h] 才告警，每時段只通知一次
 STATUS_TABLE = "pipeline_status"
 
 # ElementName -> (資料表欄位, ElementValue 鍵名, 轉型函式)
@@ -129,21 +126,10 @@ def parse(raw: dict) -> list[dict]:
 def current_slot(now: datetime) -> datetime:
     """對齊到「最近一個已經過去的排程時槽」。
 
-    以時槽而非實際執行時間算告警視窗，排程被 GitHub 延遲（不到一個間隔）也不會漏發或重複。
+    以時槽而非實際執行時間判斷「這次是哪個發送時段」，排程被 GitHub 延遲（不到一個間隔）也不受影響。
     """
     anchor = now.replace(hour=SLOT_ANCHOR[0], minute=SLOT_ANCHOR[1], second=0, microsecond=0)
     return anchor + ((now - anchor) // SLOT_INTERVAL) * SLOT_INTERVAL
-
-
-def is_alert(row: dict, slot: datetime) -> bool:
-    """起點落在 (時槽, 時槽+間隔] 的時段，且符合降雨/低溫/高溫任一條件。"""
-    start = datetime.fromisoformat(row["forecast_time_start"])
-    if not (slot < start <= slot + ALERT_WINDOW):
-        return False
-    rain, tmin, tmax = row.get("rain_probability"), row.get("min_temp"), row.get("max_temp")
-    return ((rain is not None and rain >= ALERT_RAIN)
-            or (tmin is not None and tmin <= ALERT_MIN_TEMP)
-            or (tmax is not None and tmax >= ALERT_MAX_TEMP))
 
 
 SECRET_ENV_VARS = ("TELEGRAM_BOT_TOKEN", "SUPABASE_KEY", "WEATHER_API_KEY")
@@ -156,6 +142,20 @@ def mask_secrets(text: str) -> str:
         if value and len(value) >= 8:
             text = text.replace(value, "***")
     return text
+
+
+def load_alert_settings(sb):
+    """讀取告警設定（以 service_role）。讀不到（表不存在、連線失敗）回傳 None → 呼叫端不發送。"""
+    try:
+        cities = sb.table("alert_city_settings").select("*").execute().data
+        slots = sb.table("alert_slot_settings").select("*").execute().data
+    except Exception as exc:
+        print(f"[警告] 無法讀取告警設定，略過推播：{mask_secrets(str(exc))[:200]}", file=sys.stderr)
+        return None
+    settings, warnings = alert_rules.parse_settings(cities, slots)
+    for warning in warnings:
+        print(f"[警告] {warning}", file=sys.stderr)
+    return settings
 
 
 def trigger_type() -> str:
@@ -188,17 +188,14 @@ def record_status(sb, trigger: str, status: str, stamp: str, error: str | None =
 def run_pipeline(args, sb, trigger: str) -> None:
     raw = (json.loads(SAMPLE_PATH.read_text(encoding="utf-8")) if args.from_sample else fetch_cwa())
     records = parse(raw)
-    slot = current_slot(datetime.now(TZ))
+    now = datetime.now(TZ)
+    slot = current_slot(now)
     print(f"解析完成：{len(records)} 列，{len({r['location_name'] for r in records})} 個縣市")
 
-    alerts = [r for r in records if is_alert(r, slot)]
-
     if args.dry_run:
-        print(f"[dry-run] 排程時槽 {slot:%m/%d %H:%M}，告警視窗 ({slot:%m/%d %H:%M}, {slot + ALERT_WINDOW:%m/%d %H:%M}]，"
-              f"符合告警 {len(alerts)} 筆（不寫 DB、不推播）")
-        for r in alerts[:5]:
-            print("  ", r["location_name"], r["forecast_time_start"], r.get("rain_probability"),
-                  r.get("min_temp"), r.get("max_temp"))
+        wend = alert_rules.window_end(slot, frozenset(alert_rules.SEND_SLOTS))
+        print(f"[dry-run] 排程時槽 {slot:%m/%d %H:%M}；若三個發送時段皆啟用，告警視窗為 "
+              f"({slot:%m/%d %H:%M}, {wend:%m/%d %H:%M}]（不讀取告警設定、不寫 DB、不推播）")
         print("[dry-run] 範例列:", json.dumps(records[0], ensure_ascii=False))
         return
 
@@ -213,20 +210,31 @@ def run_pipeline(args, sb, trigger: str) -> None:
     print(f"已 upsert {len(records)} 列至 weather_forecasts（來源：{trigger}）")
     record_status(sb, trigger, "success", stamp)
 
-    # 告警：只有排程推播（手動與本機只更新資料，避免重複通知）；資料寫入成功後才推播。
-    # 去重靠 is_alert 的排程時槽視窗（見 SPECIFICATION.md §6.1）
+    # 告警：只有排程推播（手動與本機只更新資料）；資料寫入成功後才判斷。
     if trigger != "schedule":
         print(f"非排程執行（{trigger}），略過告警推播")
         return
+    settings = load_alert_settings(sb)
+    if settings is None:  # 讀不到設定 → 不發送（fail closed）
+        return
+    label = f"{slot:%H:%M}"
+    if label not in settings.slots:
+        print(f"排程時槽 {label} 不在啟用的發送時段（{', '.join(sorted(settings.slots)) or '無'}），略過推播")
+        return
+    if not any(rule.enabled for rule in settings.cities.values()):
+        print("尚未啟用任何縣市，不發送告警")
+        return
+    alerts, wend = alert_rules.evaluate_alerts(records, settings, slot)
+    scope = f"涵蓋 {slot:%m/%d %H:%M}～{wend:%m/%d %H:%M}"
     if not alerts:
-        print("無需推播")
+        print(f"無需推播（{scope}，沒有符合條件的時段）")
         return
     token, chat_id = os.getenv("TELEGRAM_BOT_TOKEN"), os.getenv("TELEGRAM_CHAT_ID")
     if not token or not chat_id:
         print("未設定 TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID，略過推播")
         return
-    notifier.notify_alerts(alerts, int(ALERT_WINDOW.total_seconds() // 3600), token, chat_id)
-    print(f"已推播 {len(alerts)} 筆告警")
+    notifier.notify_alerts(alerts, scope, token, chat_id)
+    print(f"已推播 {len(alerts)} 筆告警（{scope}）")
 
 
 def main() -> None:

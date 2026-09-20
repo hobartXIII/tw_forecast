@@ -1,7 +1,7 @@
 # 台灣天氣預報與自動化通報系統 (Taiwan Weather Forecast System)
 # 系統規格書 (System Specification Document)
 
-- **版本**: `v1.6.0`
+- **版本**: `v1.7.0`
 - **狀態**: `Implemented: 後端排程與 Streamlit 前端皆已上線運作（見 §10 進度）`
 - **文件路徑**: `forecast/SPECIFICATION.md`
 - **核心流程規範**:
@@ -370,6 +370,43 @@ CREATE POLICY "Allow anon read only" ON public.pipeline_status
 - **來源判斷**：以 GitHub Actions 的 `GITHUB_EVENT_NAME` 決定寫入哪一列：`schedule` 寫 `schedule`；其餘（`workflow_dispatch`、本機直接執行）寫 `manual`。
 - **讀取**：前端以 `anon` key 唯讀（見 §8.1 第 7 點）。
 
+#### 資料表：`alert_city_settings`、`alert_slot_settings`（告警設定）
+
+告警要發給哪些縣市、用什麼條件、在哪些時段發，由這兩張表設定（判斷邏輯見 §6.1 第 5 點）。
+
+```sql
+-- 縣市告警設定：縣市為主鍵；降雨／低溫／高溫三個條件各自有開關與門檻
+CREATE TABLE IF NOT EXISTS public.alert_city_settings (
+    location_name TEXT PRIMARY KEY,                  -- 縣市（與氣象署 LocationName 一致，如 臺北市）
+    enabled BOOLEAN NOT NULL DEFAULT false,          -- 該縣市是否發送告警（預設關閉）
+    rain_enabled BOOLEAN NOT NULL DEFAULT true,
+    rain_threshold INTEGER NOT NULL DEFAULT 60 CHECK (rain_threshold BETWEEN 0 AND 100),                 -- 降雨機率 >= 此值
+    min_temp_enabled BOOLEAN NOT NULL DEFAULT true,
+    min_temp_threshold NUMERIC(4, 1) NOT NULL DEFAULT 12 CHECK (min_temp_threshold BETWEEN -20 AND 50),  -- 最低溫 <= 此值
+    max_temp_enabled BOOLEAN NOT NULL DEFAULT true,
+    max_temp_threshold NUMERIC(4, 1) NOT NULL DEFAULT 35 CHECK (max_temp_threshold BETWEEN -20 AND 50),  -- 最高溫 >= 此值
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- 發送時段設定：只在啟用的時段（須是 cron 排程時槽）發送
+CREATE TABLE IF NOT EXISTS public.alert_slot_settings (
+    slot TEXT PRIMARY KEY CHECK (slot IN ('08:45', '14:45', '20:45')),  -- 台灣時間
+    enabled BOOLEAN NOT NULL DEFAULT true,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- 初始資料：22 縣市全部關閉（不發送）、三個發送時段全部啟用
+ALTER TABLE public.alert_city_settings ENABLE ROW LEVEL SECURITY;   -- 不建立任何 policy
+ALTER TABLE public.alert_slot_settings ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.alert_city_settings FROM anon, authenticated;
+REVOKE ALL ON public.alert_slot_settings FROM anon, authenticated;
+```
+
+- **預設不發送**：22 縣市預設 `enabled = false`，要收哪個縣市的告警就把它啟用；勾選後直接套用標準條件（三個條件全開、門檻 60／12／35）。
+- **存取權限**：RLS 不建立任何 policy，並撤銷 `anon`、`authenticated` 的權限，所以前端**完全讀不到、也寫不了**（設定內容不公開）。只有排程腳本以 `service_role` 讀取。
+- **調整方式**：第 1 階段以 Supabase SQL Editor 調整（範例見 `sql/init_supabase.sql` 檔尾）；第 2 階段將提供需輸入管理者密碼的設定頁面（密碼雜湊存放於 `private` schema，由資料庫函式驗證），見 §10.2。
+- 縣市名稱須與氣象署 `LocationName` 一致（「臺」而非「台」）；`init_supabase.sql` 已寫入 22 縣市。
+
 ---
 
 ## 6. 流程一實作規格：Python 打 API 取資料存 DB (`fetch_and_store.py`)
@@ -390,21 +427,24 @@ CREATE POLICY "Allow anon read only" ON public.pipeline_status
    - 寫入前為整批 `records` 統一加上 `updated_at`（台灣時間 ISO 8601，本次寫入時間）；新增列取此值，既有列走 `ON CONFLICT DO UPDATE` 時一併更新；資料庫端另有 `DEFAULT now()` 與 `BEFORE UPDATE` 觸發器作為保底。
    - 單次 `upsert` 呼叫為單一資料庫交易（全部成功或全部失敗），前端不會讀到只寫入一半的批次。
    - 寫入成功後，以**同一個時間戳**更新 `pipeline_status`（見 §5.1）；執行失敗（含缺金鑰、HTTP 429）則記錄失敗狀態後照常以非 0 狀態碼結束。
-5. **條件判斷與 Telegram 推播**：
-   - 篩選條件：任一縣市 `rain_probability >= 60` 或 `min_temp <= 12` 或 `max_temp >= 35`。
-   - **只有排程（`schedule`）會推播**；手動更新與本機執行只更新資料、不推播，避免重複通知。本機要測試推播，可用 `scripts/test_notify.py` 傳範例訊息，或設定環境變數 `GITHUB_EVENT_NAME=schedule`。
-   - **只針對「即將開始」的時段判斷**：`StartTime` 落在（排程時槽, 排程時槽 + 3 小時］內。一週預報後段準確度較低，不告警遠期時段。
-   - **排程時槽**：台灣時間 02:45 起每 3 小時（與 `cron` 一致）。腳本把「現在」對齊到**最近一個已經過去的時槽**，再用該時槽算視窗，而不是用實際執行時間。
-   - **去重（無狀態）**：相鄰兩次視窗首尾相接，沒有縫隙也沒有重疊，每個時段的起點只會落在其中一個視窗，因此同一時段只會被通知一次；且只要這次執行落後不到 3 小時（GitHub 排程常有延遲），結果都相同，不會漏發。資料表不存「已通知」旗標。時段起點在整點、時槽在 :45，起點不會剛好壓在邊界上。
-     - 例：06:00 起的時段屬於 05:45 時槽（視窗 05:45～08:45）。05:45 那次即使延遲到 06:25 才跑，仍以 05:45 為基準，照常涵蓋 06:00。
-     - 限制：腳本內的時槽設定（`SLOT_ANCHOR`、`SLOT_INTERVAL`）與 workflow 的 `cron` 是同一件事的兩處寫法，修改排程時須一起改；延遲超過一個間隔（3 小時）或整個時槽被 GitHub 丟棄時，該時槽的告警不會補發（寧可漏、不重複）。
-   - **推播管道為 Telegram**（`scripts/notifier.py`）：符合條件則組成純文字訊息（標題「🔔 天氣告警」、副標題「未來 3 小時內開始的時段，共 N 筆符合條件」、每筆一行 `縣市 MM/DD HH:MM 起｜降雨 X%｜最低~最高°C`，值為 NULL 顯示「—」），呼叫 `sendMessage` 傳給 `TELEGRAM_CHAT_ID`。
+5. **條件判斷與 Telegram 推播**（縣市、條件與發送時段由資料庫設定，見 §5.1）：
+   - **只有排程（`schedule`）會推播**；手動更新與本機執行只更新資料、不推播。測試訊息格式可用 `scripts/test_notify.py`。
+   - **預設不發送**：`alert_city_settings` 的縣市預設關閉；沒有啟用任何縣市時，日誌記錄「尚未啟用任何縣市，不發送告警」。
+   - **發送時段（可選）**：僅在 `alert_slot_settings` 啟用的時段發送，可選 08:45、14:45、20:45（皆為 `cron` 排程時槽）。腳本把「現在」對齊到最近一個已經過去的排程時槽（`current_slot`），時槽不在啟用的發送時段就略過（資料照常更新）。以時槽而非實際執行時間判斷，排程被 GitHub 延遲不到一個間隔也不受影響。
+   - **判斷條件（每個縣市各自設定）**：降雨機率 ≥ 門檻、最低溫 ≤ 門檻、最高溫 ≥ 門檻，三個條件各有開關與門檻，已啟用的條件任一符合即列入；欄位為 NULL 不判斷。
+   - **判斷視窗（W1）**：從這次發送時槽到「下一個啟用的發送時槽」之前，凡與視窗（時槽, 下一發送時槽］有交集的預報時段（**含進行中的**）才判斷，並標示「進行中」（時槽當下已開始）或「即將開始」。三個時段皆啟用時：
+     - 08:45 → 涵蓋今日白天（進行中）
+     - 14:45 → 白天（進行中）＋今晚（即將開始）
+     - 20:45 → 今晚（進行中）＋明日白天（即將開始）
+     - 只啟用單一時段時，視窗為隔天同一時間。
+   - **重複出現屬預期**：進行中的時段會在相鄰兩次發送重複出現（如 06:00～18:00 在 08:45 與 14:45 都可能出現），這是「早、午、晚三次報告」的設計，不再有「每個時段只通知一次」的去重；一天最多 3 則。
+   - **讀不到設定就不發送（fail closed）**：設定表不存在、連線失敗時略過推播並在日誌警告，資料照常更新、不視為失敗；不合法的縣市／時段列略過並警告。
+   - **推播管道為 Telegram**（`scripts/notifier.py`）：符合條件則組成純文字訊息 —— 標題「🔔 天氣告警」、副標題「涵蓋 MM/DD HH:MM～MM/DD HH:MM，共 N 筆符合條件」、每筆一行 `縣市 MM/DD HH:MM~HH:MM 進行中｜降雨 X%｜最低~最高°C`（值為 NULL 顯示「—」）—— 呼叫 `sendMessage` 傳給 `TELEGRAM_CHAT_ID`。
    - **訊息格式**：以 HTML 模式送出（標題粗體），所有動態內容經過跳脫；Telegram 回 400（格式問題）時自動改用純文字重送一次。
-   - **筆數與字數上限**：最多列 30 筆且總長不超過 4000 字，超過的部分以「另有 N 筆未列出」取代（不再直接截掉）。
+   - **筆數與字數上限**：最多列 30 筆且總長不超過 4000 字，超過的部分以「另有 N 筆未列出」取代。
    - **⚠️ token 不可外洩**：`requests` 的例外訊息會帶完整網址（網址含 token），而失敗訊息會寫進 `pipeline_status.last_error`（前端可讀）。因此推播失敗一律改寫為不含網址的訊息（如「Telegram 回應 401：…」「無法連線至 Telegram（ConnectionError）」），且記錄失敗原因前會遮蔽所有機密環境變數的值。
    - **失敗處理**：未設定 `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` 時略過推播（不視為錯誤）；推播失敗時 workflow 標記失敗，但預報已寫入，`pipeline_status` 記錄 `failed` 與原因，不動 `last_success_at`。
    - **沒有符合條件時不發訊息**。
-
 ---
 
 ## 7. GitHub Actions 自動化排程工作流規格
@@ -595,6 +635,7 @@ HW1/                                     # repo 根目錄
     │   ├── fetch_and_store.py           # 🌟 流程一：Python 打 API 取資料存 DB & 告警推播（支援 --dry-run / --from-sample）
     │   ├── check_cwa_api.py             # 驗證 CWA API 並存下範例回應到 samples/
     │   ├── check_rls.py                 # 驗證 RLS：anon 可讀不可寫、service_role 可寫
+    │   ├── alert_rules.py               # 告警規則（讀取設定後判斷：發送時段、視窗、條件；純函式）
     │   ├── notifier.py                  # Telegram 推播（訊息組合、跳脫、400 重送、token 不外洩）
     │   ├── get_telegram_chat_id.py      # 查詢 TELEGRAM_CHAT_ID（token 只讀本機 .env）
     │   └── test_notify.py               # 傳範例告警到 Telegram，確認推播設定與格式
@@ -624,7 +665,7 @@ HW1/                                     # repo 根目錄
 | **M0** | **建立 GitHub Repo** | 專案結構 | 於 `HW1/` 初始化 git 並推送至 GitHub（`HW1/` 為 repo 根目錄，程式碼在 `forecast/`，見 §9），確認 `.github/workflows/` 位於 repo 根目錄。 |
 | **M1** | **金鑰與環境準備** | 安全配置 | 備妥 CWA API Key、Telegram 機器人 token 與 chat_id；註冊 Supabase 並建立免費專案取得 URL、`service_role` key、`anon` key；後端 Secrets 設定於 GitHub Secrets 與本地 `.env`。 |
 | **M2** | **資料庫綱要建立** | 儲存層 | 於雲端 Supabase 執行 `init_supabase.sql` 建立 `weather_forecasts` 表與 RLS；以 `anon` key 驗證可讀取、不可寫入。 |
-| **M3** | **流程一實作** | **Python 打 API 存 DB** | （`F-D0047-091` 實際回應結構已於 §3.3 驗證）`fetch_and_store.py` 成功抓取一週預報、清洗入庫，並於排程時槽內即將開始（3 小時內）的時段 PoP $\ge 60\%$ 時推播 Telegram（僅排程推播，手動不推播）。 |
+| **M3** | **流程一實作** | **Python 打 API 存 DB** | （`F-D0047-091` 實際回應結構已於 §3.3 驗證）`fetch_and_store.py` 成功抓取一週預報、清洗入庫，並依資料庫設定（縣市、條件、發送時段）推播 Telegram（僅排程推播，手動不推播）。 |
 | **M4** | **GitHub Actions 自動化** | 排程管線 | `.github/workflows/weather_worker.yml` 依排程與手動觸發成功執行流程一，資料寫入 Supabase，密鑰皆來自 GitHub Secrets。 |
 | **M5** | **Streamlit 讀 DB 渲染** | 前端呈現 | Streamlit 儀表板以 `supabase-py`（或 `psycopg2`）成功讀取 Supabase，完整呈現地圖、折線圖與明細表格，並含「立即更新」按鈕。 |
 | **M6** | **部署至 Streamlit Community Cloud** | 前端上線 | 於 Streamlit Community Cloud 部署成功，Secrets 設定完成，公開網址可正常顯示最新資料。 |
@@ -636,21 +677,23 @@ HW1/                                     # repo 根目錄
 | 里程碑 | 狀態 | 備註 |
 | :---: | :---: | :--- |
 | M0 | ✅ 完成 | repo：`hobartXIII/tw_forecast`，根目錄 `HW1/` |
-| M1 | ⚠️ 部分完成 | CWA、Supabase 金鑰已備妥；推播管道由 Google Chat 改為 **Telegram**（個人 Gmail 無法使用 Google Chat webhook 與 API，官方文件要求 Business/Enterprise Workspace）。本機已備妥 token，**GitHub Secrets 的 `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` 尚未設定**，告警目前不會推播（腳本會略過） |
+| M1 | ✅ 完成 | CWA、Supabase 金鑰已備妥；推播管道由 Google Chat 改為 **Telegram**（個人 Gmail 無法使用 Google Chat webhook 與 API，官方文件要求 Business/Enterprise Workspace）。`TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` 已設定於本機 `.env` 與 GitHub Secrets（Secrets 為使用者回報，尚未經實際排程推播驗證） |
 | M2 | ✅ 完成 | `weather_forecasts`（含 `updated_at`、觸發器、`Asia/Taipei` 時區）與 `pipeline_status`（排程、手動各一列）皆已建立；`check_rls.py` 已於 2026-09-20 執行，兩張表的驗證全數通過（`anon` 可讀；新增、更新、刪除皆被拒絕），未留下測試殘留 |
-| M3 | ✅ 完成 | 推播邏輯已實作，待設定 webhook 後實際驗證 |
+| M3 | ⚠️ 待驗證 | Telegram 推播已實測（手機收到範例訊息）；**告警設定化（第 1 階段）已完成程式與模擬測試**：縣市／條件／發送時段由資料庫設定、W1 判斷視窗、預設不發送。**新增的設定表尚未在 Supabase 執行**，需執行 `init_supabase.sql`、啟用縣市後才會實際推播，屆時再驗證 |
 | M4 | ✅ 完成 | 手動觸發與**自動排程皆已實際成功**：`cron`（台灣時間 02:45 起每 3 小時）於 2026-09-20 20:55 自動觸發（`schedule` 事件，較預定時槽 20:45 延遲約 10 分鐘），成功寫入預報，並更新 `pipeline_status` 的 `schedule` 列（`last_success_at` = 20:56）。目前只觀察到這一次排程，後續時槽尚待觀察 |
 | M5 | ✅ 完成 | 地區／縣市連動篩選、地圖、趨勢圖、明細表格；「立即更新」（20 分鐘間隔、觸發後 60 秒自動重整）程式已完成並以模擬測試驗證，儀表板可正常讀取 `pipeline_status`；**手動更新已於 2026-09-20 21:27 實際驗證**：按下按鈕 → 觸發 `workflow_dispatch`（成功，29 秒）→ 寫入 `pipeline_status` 的 `manual` 列 → 60 秒後自動重整。GitHub 對該 API 的成功狀態碼，文件現列為 200；程式以 204 判斷成功而流程正常，推論目前實際回應為 204（見待辦） |
 | M6 | ✅ 完成 | 已部署至 Streamlit Community Cloud 並正常顯示資料 |
 
 ### 10.2 待辦
-- 持續觀察後續排程時槽（如 23:45、02:45）是否穩定自動觸發，且每次都更新 `pipeline_status` 的 `schedule` 列。
-- 取得 `TELEGRAM_CHAT_ID`（對機器人按 Start 後執行 `python scripts/get_telegram_chat_id.py`），用 `python scripts/test_notify.py` 確認手機收得到；再把兩個值設定到 GitHub Secrets，並驗證排程實際推播。
-- （建議，低優先）「立即更新」觸發 GitHub 時，成功條件目前只認 HTTP 204；官方文件現只列 200；按鈕流程實測正常，由此推論目前實際回應為 204（未直接記錄回應碼）。可改為 200 或 204 都算成功，避免 GitHub 日後調整造成誤判「觸發失敗」。
-- 重新繪製 `architecture_diagram.svg`、`sequence_diagram.svg`（仍為 v1.1.0 版本）。
+- **告警設定第 1 階段上線**：在 Supabase 重新執行 `sql/init_supabase.sql`（新增 `alert_city_settings`、`alert_slot_settings`）→ 執行 `python scripts/check_rls.py` 驗證 `anon` 讀不到也寫不了 → 用 SQL 啟用縣市（預設全部關閉，可把某縣市降雨門檻設為 0 以驗證推播）→ 確認下一個發送時段（08:45／14:45／20:45）實際收到訊息。
+- **告警設定第 2 階段**：管理者設定頁面（點擊後輸入密碼；密碼雜湊存於 `private` schema，由資料庫函式 `admin_get_alert_settings` / `admin_save_alert_settings` 以 `pgcrypto` 驗證，密碼錯誤延遲 1 秒；設定內容登入後才讀得到；需在頁面新增 22 縣市可編輯表格、「全部啟用／全部關閉」按鈕與三個發送時段勾選）。密碼為 12 碼隨機，雜湊值由本機腳本產生後手動寫入資料庫。
+- 持續觀察後續排程時槽是否穩定自動觸發，且每次都更新 `pipeline_status` 的 `schedule` 列。
+- （建議，低優先）「立即更新」觸發 GitHub 時，成功條件目前只認 HTTP 204；官方文件現只列 200，按鈕流程實測正常，由此推論目前實際回應為 204（未直接記錄回應碼）。可改為 200 或 204 都算成功，避免 GitHub 日後調整造成誤判「觸發失敗」。
+- 重新繪製 `architecture_diagram.svg`、`sequence_diagram.svg`（仍為 v1.1.0 版本，且尚未反映 Telegram 與告警設定）。
 - 將 workflow 的 `actions/checkout`、`actions/setup-python` 升級，消除 Node.js 20 deprecated 警告。
 
 ### 10.3 版本紀錄
+- **v1.7.0**：告警設定化（第 1 階段）：新增 `alert_city_settings`（縣市為主鍵，降雨／低溫／高溫各自的開關與門檻，預設全部關閉）與 `alert_slot_settings`（可選發送時段 08:45／14:45／20:45），`anon` 完全讀不到也寫不了；排程腳本改讀資料庫設定，只在啟用的發送時段發送，判斷視窗改為「本次發送時槽到下一個啟用時槽」（含進行中時段，標示進行中／即將開始，不再逐時段去重）；讀不到設定時不發送；新增 `scripts/alert_rules.py`。訊息副標題與每行格式隨之調整（涵蓋範圍、時段起訖）。
 - **v1.6.0**：推播管道由 Google Chat 改為 Telegram（個人 Gmail 無法使用 Google Chat webhook／API）；訊息改為純文字（HTML 模式加跳脫，400 時純文字重送），超過上限顯示「另有 N 筆未列出」；推播失敗訊息與 `pipeline_status` 記錄一律不含 token；新增 `notifier.py`、`get_telegram_chat_id.py`、`test_notify.py`。
 - **v1.5.0**：地區與縣市下拉改為互斥（選其一會清除另一個），縣市選單固定 22 縣市；全台／地區層級於明細右邊新增「後續時段」分頁（每縣市目前時段之後 2 個時段，依縣市、時間排序）；單一縣市的降雨機率長條圖改為與地區一致的折線圖；氣象署未提供的降雨機率在圖上補 0 並以空心點與提示標示；天氣圖示依日夜區分（夜間不使用太陽圖示）。
 - **v1.4.0**：排程改為台灣時間 02:45 起每 3 小時（`45 */3 * * *`）；新增 `pipeline_status` 表記錄排程與手動各自最後成功更新的時間；手動更新須距上次成功更新滿 20 分鐘（一律以該表判斷，讀不到不放行，排程不受影響），觸發後 60 秒自動重整頁面；告警改為只由排程推播，並以排程時槽計算視窗（延遲不漏發、不重複）。
@@ -659,4 +702,4 @@ HW1/                                     # repo 根目錄
 
 ---
 
-*本規格書目前為 v1.6.0。*
+*本規格書目前為 v1.7.0。*

@@ -119,6 +119,41 @@ else:
     if deleted:
         admin.table(STATUS).upsert(before[0], on_conflict="trigger_type").execute()  # 還原
 
+# 5. 告警設定表：anon 完全讀不到（RLS 無 policy 且已撤銷權限），也不能改、不能刪。
+#    只針對單一列測試（連江縣／08:45）；若 RLS 失效導致被改動，會用後端金鑰還原。
+for table, key, value, patch in (("alert_city_settings", "location_name", "連江縣", {"enabled": True}),
+                                 ("alert_slot_settings", "slot", "08:45", {"enabled": False})):
+    def one():
+        return admin.table(table).select("*").eq(key, value).execute().data
+
+    try:
+        exists = bool(one())
+    except Exception as exc:
+        check(f"{table} 存在", False, f"({exc}) 請先在 Supabase 執行 sql/init_supabase.sql")
+        continue
+    try:
+        readable = len(anon.table(table).select("*").execute().data) > 0
+    except Exception:
+        readable = False  # 權限被拒絕也算讀不到
+    check(f"anon 讀不到 {table}", exists and not readable)
+    before = one()
+    try:
+        anon.table(table).update(patch).eq(key, value).execute()
+    except Exception:
+        pass
+    after = one()
+    check(f"anon 更新 {table} 被拒絕", after == before)
+    if after != before and before:
+        admin.table(table).upsert(before[0], on_conflict=key).execute()  # 還原
+    try:
+        anon.table(table).delete().eq(key, value).execute()
+    except Exception:
+        pass
+    deleted = not one()
+    check(f"anon 刪除 {table} 被拒絕", not deleted)
+    if deleted and before:
+        admin.table(table).upsert(before[0], on_conflict=key).execute()  # 還原
+
 print()
 print("RLS 驗證通過 ✅" if all(results) else "RLS 驗證失敗 ❌，請檢查 sql/init_supabase.sql 的 policy")
 sys.exit(0 if all(results) else 1)

@@ -74,3 +74,64 @@ ALTER TABLE public.weather_forecasts ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Allow anon read only" ON public.weather_forecasts;
 CREATE POLICY "Allow anon read only" ON public.weather_forecasts
     FOR SELECT TO anon USING (true);
+
+
+-- ============================================================
+-- 告警設定（SPECIFICATION.md §5.1）
+-- 只有排程腳本以 service_role 讀取；anon 完全讀不到也寫不了（RLS 不建任何 policy，並撤銷權限）。
+-- 預設「所有縣市關閉」＝不發送；要收哪個縣市的告警，把該縣市的 enabled 改為 true。
+-- ============================================================
+
+-- 縣市告警設定：縣市為主鍵；降雨／低溫／高溫三個條件各自有開關與門檻
+CREATE TABLE IF NOT EXISTS public.alert_city_settings (
+    location_name TEXT PRIMARY KEY,                  -- 縣市（與氣象署 LocationName 一致，如 臺北市）
+    enabled BOOLEAN NOT NULL DEFAULT false,          -- 該縣市是否發送告警（預設關閉）
+    rain_enabled BOOLEAN NOT NULL DEFAULT true,      -- 降雨條件開關
+    rain_threshold INTEGER NOT NULL DEFAULT 60 CHECK (rain_threshold BETWEEN 0 AND 100),        -- 降雨機率 >= 此值
+    min_temp_enabled BOOLEAN NOT NULL DEFAULT true,  -- 低溫條件開關
+    min_temp_threshold NUMERIC(4, 1) NOT NULL DEFAULT 12 CHECK (min_temp_threshold BETWEEN -20 AND 50),  -- 最低溫 <= 此值
+    max_temp_enabled BOOLEAN NOT NULL DEFAULT true,  -- 高溫條件開關
+    max_temp_threshold NUMERIC(4, 1) NOT NULL DEFAULT 35 CHECK (max_temp_threshold BETWEEN -20 AND 50), -- 最高溫 >= 此值
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- 發送時段設定：只在啟用的時段（須是排程時槽）發送
+CREATE TABLE IF NOT EXISTS public.alert_slot_settings (
+    slot TEXT PRIMARY KEY CHECK (slot IN ('08:45', '14:45', '20:45')),  -- 台灣時間
+    enabled BOOLEAN NOT NULL DEFAULT true,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- 初始資料（已存在的列不會被覆蓋）：22 縣市全部關閉、三個發送時段全部啟用
+INSERT INTO public.alert_city_settings (location_name) VALUES
+    ('臺北市'), ('新北市'), ('基隆市'), ('桃園市'), ('新竹市'), ('新竹縣'),
+    ('苗栗縣'), ('臺中市'), ('彰化縣'), ('南投縣'), ('雲林縣'),
+    ('嘉義市'), ('嘉義縣'), ('臺南市'), ('高雄市'), ('屏東縣'),
+    ('宜蘭縣'), ('花蓮縣'), ('臺東縣'),
+    ('澎湖縣'), ('金門縣'), ('連江縣')
+ON CONFLICT (location_name) DO NOTHING;
+INSERT INTO public.alert_slot_settings (slot) VALUES ('08:45'), ('14:45'), ('20:45')
+ON CONFLICT (slot) DO NOTHING;
+
+-- 鎖住：啟用 RLS 且不建立任何 policy，另撤銷 anon / authenticated 的所有權限（雙重保護）
+ALTER TABLE public.alert_city_settings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.alert_slot_settings ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.alert_city_settings FROM anon, authenticated;
+REVOKE ALL ON public.alert_slot_settings FROM anon, authenticated;
+
+-- 更新時自動刷新 updated_at（沿用上方的 set_updated_at）
+DROP TRIGGER IF EXISTS trg_alert_city_settings_updated_at ON public.alert_city_settings;
+CREATE TRIGGER trg_alert_city_settings_updated_at
+    BEFORE UPDATE ON public.alert_city_settings
+    FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+DROP TRIGGER IF EXISTS trg_alert_slot_settings_updated_at ON public.alert_slot_settings;
+CREATE TRIGGER trg_alert_slot_settings_updated_at
+    BEFORE UPDATE ON public.alert_slot_settings
+    FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
+-- 用法範例（在 Supabase SQL Editor 執行；管理頁面完成前先用這種方式調整）：
+--   啟用臺北市：           UPDATE public.alert_city_settings SET enabled = true WHERE location_name = '臺北市';
+--   臺北市降雨門檻改 70：   UPDATE public.alert_city_settings SET rain_threshold = 70 WHERE location_name = '臺北市';
+--   關閉臺北市的低溫條件： UPDATE public.alert_city_settings SET min_temp_enabled = false WHERE location_name = '臺北市';
+--   全部縣市啟用：         UPDATE public.alert_city_settings SET enabled = true;
+--   關閉 14:45 發送：      UPDATE public.alert_slot_settings SET enabled = false WHERE slot = '14:45';
