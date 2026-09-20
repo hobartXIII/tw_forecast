@@ -430,22 +430,25 @@ jobs:
 前端只保留 **Streamlit + Folium**，直接連線 Supabase 唯讀查詢，取代課程原版的本機 `sqlite3`。
 
 ### 8.1 Streamlit 互動儀表板 (`streamlit_app/app.py`)
-1. **讀取資料庫（不快取）**：每次頁面載入/重新整理都重新查詢 Supabase，**不使用** `st.cache_data` / `st.cache_resource` 快取查詢結果（連線物件可重用）；畫面顯示目前顯示的預報時段起訖時間（以 `Asia/Taipei` 顯示）。資料表不存寫入時間，因此不顯示「最後更新時間」。
+1. **讀取資料庫（不快取）**：每次頁面載入/重新整理都重新查詢 Supabase，**不使用** `st.cache_data` / `st.cache_resource` 快取查詢結果（連線物件可重用）；畫面顯示目前顯示的預報時段起訖時間，以及該批資料的「資料更新時間」（取所顯示列的 `updated_at` 最大值），皆以 `Asia/Taipei` 顯示。
+   - **只取最新批次**：CWA 第一個時段會隨時間縮短（如 `06:00~18:00` → `12:00~18:00`），而主鍵含 `forecast_time_end`，舊列會留在表中並與新列時段重疊。每次流程一都以同一個 `updated_at` 寫入整批，因此前端查詢後只保留 `updated_at` 等於最大值的列，避免同一縣市出現重疊時段；舊列保留作為歷史存檔。
 2. **「目前時段」定義**：查詢 `forecast_time_start <= 現在(Asia/Taipei) < forecast_time_end` 的各縣市資料；若無符合資料，取最接近現在的最新時段。
 3. **地區下拉選單 (Dropdown)**：
-   - 篩選 `北部地區`、`中部地區`、`南部地區`、`東部地區`；縣市對應分區由前端靜態對照表 (`streamlit_app/components/region_data.py`) 提供；經緯度與 `avg_temp` 直接取自資料庫（`avg_temp` 若為 NULL，退回 `(min_temp + max_temp) / 2`）。
+   - 篩選 `全部地區`、`北部地區`、`中部地區`、`南部地區`、`東部地區`、`離島地區`（澎湖、金門、連江不屬於四大分區，另列離島）；縣市對應分區由前端靜態對照表 (`streamlit_app/components/region_data.py`) 提供；經緯度與 `avg_temp` 直接取自資料庫（`avg_temp` 若為 NULL，退回 `(min_temp + max_temp) / 2`）。
 4. **最高與最低氣溫折線圖（一週趨勢）**：
-   - 繪製指定地區/縣市未來 7 天（各 12 小時時段）之 `min_temp` 與 `max_temp` 雙折線圖（對應海報步驟 14）。
+   - 繪製指定地區/縣市未來 7 天（各 12 小時時段）之 `min_temp` 與 `max_temp` 雙折線圖（對應海報步驟 14）；另有「折線圖範圍」下拉選單，可選「地區平均」（該地區各縣市逐時段平均）或單一縣市。
+   - 若資料已過期（沒有尚未結束的時段），顯示提示並引導使用者按「立即更新」，不得拋出例外。
    - 趨勢查詢須限制範圍（例如近 N 天 + `order` + `limit`），避免超過 Supabase 預設單次 1000 筆上限。
 5. **明細資料表格**：
-   - 呈現時段、地區、氣溫、降雨機率、舒適度（對應海報步驟 15）。
+   - 呈現目前時段各縣市的時段、地區、天氣現象、氣溫、降雨機率、舒適度（對應海報步驟 15）；NULL 顯示「—」。
 6. **台灣地圖視覺化 (Folium + Streamlit)**：
    - 使用 `folium` + `streamlit-folium`，依縣市座標與 `avg_temp` 繪製標記。
    - 色階分級標記：
      - `< 20°C`: 藍綠色
      - `20 ~ 25°C`: 綠色
-     - `25 ~ 30°C`: 橙黃色
+     - `25 ~ 30°C`: 橙黃色（含 30）
      - `> 30°C`: 鮮紅色
+   - 底圖使用 OpenStreetMap（CartoDB 底圖需要 API key）。
 7. **「立即更新」按鈕**：
    - 呼叫 `POST https://api.github.com/repos/{GH_REPO}/actions/workflows/weather_worker.yml/dispatches`，Header 帶 `Authorization: Bearer {GH_DISPATCH_TOKEN}`，Body `{"ref": "main"}`（成功回傳 HTTP 204）。
    - 成功後顯示「已觸發更新，約 1~2 分鐘後重新整理」（更新完成前仍顯示舊資料，見 §7.1），並提供「重新載入資料」按鈕。
@@ -479,10 +482,10 @@ conn = psycopg2.connect(st.secrets["SUPABASE_DB_URL"])  # 唯讀角色 + Pooler 
 - 需要複雜 SQL（分組、視窗函數）時優先採用此方案。
 
 ### 8.3 部署至 Streamlit Community Cloud
-1. 將 repo 推送至 GitHub（`forecast/` 為 repo 根目錄，見 §9）。
-2. 於 [Streamlit Community Cloud](https://streamlit.io/cloud) 連結 GitHub 帳號，選擇此 repo、分支 `main`，**Main file path** 設為 `streamlit_app/app.py`。
+1. 將 repo 推送至 GitHub（`HW1/` 為 repo 根目錄，見 §9）。
+2. 於 [Streamlit Community Cloud](https://streamlit.io/cloud) 連結 GitHub 帳號，選擇此 repo、分支 `main`，**Main file path** 設為 `forecast/streamlit_app/app.py`。
 3. 於 **Advanced settings → Secrets** 貼上 §4.2 所列前端 Secrets（TOML 格式）。
-4. 相依套件由 repo 根目錄 `requirements.txt` 提供（需包含 `streamlit`、`supabase`、`pandas`、`folium`、`streamlit-folium`、`requests`；使用方案 B 另加 `psycopg2-binary`）。
+4. 相依套件由 `forecast/requirements.txt` 提供（Streamlit Cloud 會在主程式檔所在目錄往上尋找 `requirements.txt`，若偵測不到，可在部署設定中指定或於 repo 根目錄放一份）（需包含 `streamlit`、`supabase`、`pandas`、`folium`、`streamlit-folium`、`requests`；使用方案 B 另加 `psycopg2-binary`）。
 5. 部署後，程式碼 push 至 `main` 會自動重新部署；資料更新則由 GitHub Actions 寫入 Supabase，無需重新部署。
 
 > 不使用 GitHub Pages，前端網址由 Streamlit Community Cloud 提供（`*.streamlit.app`）。

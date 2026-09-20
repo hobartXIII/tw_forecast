@@ -17,4 +17,7 @@
    ```
    原始回應存到 `samples/F-D0047-091.json`（不會被 commit），據此確認 SPECIFICATION.md §3.3 的欄位結構。
 4. 於 Supabase SQL Editor 執行 `sql/init_supabase.sql` 建表。
-5. 前端本地測試：複製 `.streamlit/secrets.toml.example` 為 `.streamlit/secrets.toml` 並填值。
+5. 前端本地測試：複製 `.streamlit/secrets.toml.example` 為 `.streamlit/secrets.toml` 並填值（前端只用 `anon` key，不可放 `service_role`），再啟動儀表板：
+   ```powershell
+   streamlit run streamlit_app/app.py
+   ```
