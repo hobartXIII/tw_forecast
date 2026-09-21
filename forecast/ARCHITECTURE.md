@@ -80,6 +80,38 @@ flowchart TD
 | `backend/errors.py` | `AbortRun`、`NotifyError` | 流程例外類型 |
 | `config.py` | 常數 | 時區、資料集、排程時槽、資料表名稱、發送時段、需遮蔽的環境變數 |
 
+### 後端步驟對照（從日誌找到程式）
+
+後端沒有畫面，改用「執行步驟」編號。`pipeline.py` 與 `cli.py` 的註解用同樣的編號（`[步驟 N]`）；Actions 日誌上看到某一行訊息時，可以用下表反查是哪一步、哪個檔案印的。
+
+```text
+[1 啟動] → [2 取得 API] → [3 解析] → [4 寫入預報] → [5 記錄狀態] ─┬─(手動)→ 結束
+                                                                  └─(排程)→ [6 告警判斷] → [7 推播]
+```
+
+| 步驟 | 做什麼 | 程式位置 | 日誌上會看到的訊息 |
+| :---: | :--- | :--- | :--- |
+| 1 | 載入 `.env`、解析參數、判斷 schedule／manual、組裝 Pipeline | `backend/cli.py` 的 `main`、`build_pipeline` | 缺金鑰時：`缺少 SUPABASE_URL / SUPABASE_KEY` 或 `缺少環境變數 WEATHER_API_KEY` |
+| 2 | 打氣象署 API（重試、429 中止） | `backend/cwa_client.py` 的 `CwaClient.fetch` | 失敗時：`[第 N 次嘗試失敗] …`；超量：`CWA API 回應 429 …` |
+| 3 | 巢狀 JSON 攤平成資料列 | `backend/parser.py` 的 `ForecastParser.parse` | `解析完成：N 列，M 個縣市` |
+| 4 | upsert 到 `weather_forecasts` | `backend/repository.py` 的 `ForecastRepository.upsert` | `已 upsert N 列至 weather_forecasts（來源：schedule／manual）` |
+| 5 | 寫入 `pipeline_status` | `backend/repository.py` 的 `StatusRepository.record` | 失敗時：`[警告] 無法更新 pipeline_status …`（不影響主流程） |
+| 6 | 讀取告警設定並判斷 | `backend/pipeline.py` 的 `Pipeline._alert`、`backend/alerts.py` | 見下表 |
+| 7 | 送出 Telegram 訊息 | `backend/notifier.py` 的 `TelegramNotifier` | `已推播 N 筆告警（涵蓋 …）` |
+
+**步驟 6 可能印出的訊息與原因**（也就是「為什麼沒收到告警」的對照）
+
+| 日誌訊息 | 代表 |
+| :--- | :--- |
+| `非排程執行（manual），略過告警推播` | 手動或本機執行，只更新資料 |
+| `[警告] 無法讀取告警設定，略過推播：…` | 讀不到設定，一律不發送（fail closed） |
+| `排程時槽 HH:MM 不在啟用的發送時段（…），略過推播` | 這個時槽不是你啟用的發送時段 |
+| `尚未啟用任何縣市，不發送告警` | 所有縣市都是關閉 |
+| `無需推播（涵蓋 …，沒有符合條件的時段）` | 有啟用，但預報沒有達到門檻 |
+| `未設定 TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID，略過推播` | 條件符合，但缺 Telegram 設定 |
+
+試跑（`--dry-run`）會在步驟 3 之後印出 `[dry-run] …` 並結束，不會執行步驟 4～7。任何步驟拋出例外時，`cli.main` 會把失敗原因（已遮蔽金鑰）寫進 `pipeline_status` 再結束。
+
 ## 4. 前端（流程二）
 
 ### 資料流
@@ -133,6 +165,61 @@ flowchart TD
 | `views/tables_view.py` | `render_table_tab`、`render_next_tab` | 明細與後續時段分頁 |
 | `views/date_query.py` | `render_date_tab` | 日期查詢分頁 |
 | `views/admin_dialogs.py` | `open_if_requested` | 告警設定的登入與設定兩個視窗 |
+
+### 頁面區塊對照（從畫面找到程式）
+
+如果你習慣從 HTML 的角度看網頁，可以用這張圖把畫面上的每一塊對回程式。`streamlit_app/app.py` 的 `main()` 也用同樣的代號（A～H）加了註解。
+
+```text
+┌──────────────────────────────────────────────────────────────┐
+│ [A] 🌤️ 台灣天氣預報            [B] 立即更新 │ 重新載入 │ 告警設定 │
+│ [C] 更新提示／倒數／「最近排程更新 …」                          │
+│ [D] 地區 ▼                     縣市 ▼                          │
+│ [E] 預報時段 … ｜ 資料更新 …（過期時有警示）                    │
+│ [F] 平均氣溫 │ 最高溫 │ 最低溫 │ 降雨機率   （四張卡片）         │
+│ [G] 🗺️ 平均氣溫地圖                                            │
+│ [H] 氣溫趨勢 │ 降雨機率 │ 明細 │ 後續時段 │ 日期查詢  （分頁）  │
+│ [彈出] ⚙️ 告警設定視窗（按 B 的第三顆才出現）                   │
+└──────────────────────────────────────────────────────────────┘
+```
+
+| 區塊 | 畫面內容 | 程式位置 |
+| :---: | :--- | :--- |
+| A | 標題 | `streamlit_app/app.py` 的 `head_left.title(...)` |
+| B | 三顆按鈕（電腦並排、手機收進「☰ 選單」） | `views/header.py` 的 `Header.render_controls` |
+| C | 更新提示、間隔倒數、最近更新時間 | `views/header.py` 的 `Header.handle` |
+| D | 地區、縣市下拉（互斥） | `views/filters.py` 的 `render_filters` |
+| E | 預報時段與過期警示 | `streamlit_app/app.py` 的 `st.caption`／`st.warning` |
+| F | 四張摘要卡片 | `views/summary.py` 的 `render_summary` |
+| G | 地圖 | `views/map_section.py` 的 `render_map`（地圖本體在 `map_view.py`） |
+| H | 五個分頁 | `views/tabs.py` 的 `render_tabs`；內容在 `trends.py`、`tables_view.py`、`date_query.py` |
+| 彈出 | 告警設定視窗 | `views/admin_dialogs.py`；內容在 `admin_ui.py` |
+
+**HTML 概念 ↔ Streamlit**
+
+| HTML | Streamlit |
+| :--- | :--- |
+| `<h1>`、`<p>` | `st.title`、`st.caption`、`st.markdown` |
+| `<div style="display:flex">` 分欄 | `st.columns([2, 3])` |
+| 分頁標籤 | `st.tabs([...])` |
+| `<select>` | `st.selectbox` |
+| `<button onclick>` | `st.button`（**回傳 True／False**，不是綁事件函式） |
+| `<style>` 與 class | `frontend/style.py` 的 CSS，用 `st.markdown(..., unsafe_allow_html=True)` 注入 |
+| `<table>` | `st.dataframe` |
+| `<dialog>` | `@st.dialog` |
+| 變數／JS 狀態 | `st.session_state`（每個瀏覽器連線各一份） |
+
+**最容易搞混的一點：沒有事件處理。** HTML 是「按鈕被按 → 執行綁好的函式、只改一小塊」；Streamlit 是「按鈕被按 → 整份 `main()` 從頭再跑一次」，這次 `st.button(...)` 回傳 `True`，程式用 `if` 判斷後決定畫什麼。把 `app.py` 想成一份會被重複執行的模板，就不會搞混。例外：「立即更新」倒數與告警設定視窗會各自只重跑自己那一塊。
+
+**版面與樣式在哪裡調**
+
+| 想調的 | 位置 |
+| :--- | :--- |
+| 欄位數與寬度比 | 各區塊的 `st.columns(...)`：`app.py`（A/B）、`views/header.py`、`views/filters.py`、`views/summary.py` |
+| 間距、圓角、卡片外觀、手機版（≤ 640px）行為 | `frontend/style.py` 的 CSS |
+| 主題顏色 | `.streamlit/config.toml`（根目錄與 `forecast/` 各一份，要一起改） |
+| 圖表／地圖高度 | `frontend/charts.py` 的 `CHART_HEIGHT`、`views/map_section.py` 的 `MAP_HEIGHT` |
+| 表格欄位與格式 | `frontend/tables.py`（欄位與順序）、`views/tables_view.py`（格式）、`frontend/scope.py` 的 `table_drop_columns`（依範圍隱藏） |
 
 ## 5. 測試、檢查與工具
 

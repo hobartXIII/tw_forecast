@@ -5,6 +5,10 @@ Pipeline 只負責「串流程」，所有外部相依（資料來源、資料�
 
 輸入：資料來源、解析器、各 Repository、通知器；run() 收執行來源（schedule／manual）。
 輸出：寫入 weather_forecasts 與 pipeline_status；符合條件時推播 Telegram；過程以 print 記錄到日誌。
+
+執行步驟（下面 run()／_alert() 的註解用同樣的編號；每一步印出的日誌訊息見 ARCHITECTURE.md「後端步驟對照」）：
+  1 啟動（cli.main）→ 2 取得 API 資料 → 3 解析 → 4 寫入預報 → 5 記錄執行狀態
+  → 6 告警判斷（只有排程）→ 7 推播 Telegram
 """
 import json
 from dataclasses import dataclass
@@ -32,6 +36,7 @@ class Pipeline:
 
     def run(self, trigger: str) -> None:
         """執行一次。trigger 為 "schedule"（排程，會推播）或 "manual"（手動／本機，只更新資料）。"""
+        # [步驟 2] 取得 API 原始 JSON（CwaClient.fetch，或 --from-sample 讀樣本）→ [步驟 3] 解析成資料列
         records = self.parser.parse(self.fetch_raw())
         slot = current_slot(self.now())
         print(f"解析完成：{len(records)} 列，{len({r['location_name'] for r in records})} 個縣市")
@@ -40,15 +45,16 @@ class Pipeline:
             self._print_dry_run(records, slot)
             return
 
-        # 整批共用同一個 updated_at（新增與更新皆以本次寫入時間為準），並同步寫入 pipeline_status
+        # [步驟 4] 寫入預報：整批共用同一個 updated_at（新增與更新皆以本次寫入時間為準），單一交易 upsert
         stamp = self.now().isoformat()
         for record in records:
             record["updated_at"] = stamp
         self.forecasts.upsert(records)
         print(f"已 upsert {len(records)} 列至 weather_forecasts（來源：{trigger}）")
+        # [步驟 5] 記錄執行狀態：寫入 pipeline_status（前端「立即更新」的間隔判斷依據）
         self.status.record(trigger, "success", stamp)
 
-        # 告警：只有排程推播（手動與本機只更新資料）；資料寫入成功後才判斷。
+        # [步驟 6] 告警判斷：只有排程推播（手動與本機只更新資料）；資料寫入成功後才判斷。
         if trigger != "schedule":
             print(f"非排程執行（{trigger}），略過告警推播")
             return
@@ -78,7 +84,7 @@ class Pipeline:
         if not any(rule.enabled for rule in settings.cities.values()):
             print("尚未啟用任何縣市，不發送告警")
             return
-        hits, wend = alerts.evaluate_alerts(records, settings, slot)
+        hits, wend = alerts.evaluate_alerts(records, settings, slot)  # 逐一套用縣市規則與判斷視窗
         scope = f"涵蓋 {slot:%m/%d %H:%M}～{wend:%m/%d %H:%M}"
         if not hits:
             print(f"無需推播（{scope}，沒有符合條件的時段）")
@@ -86,5 +92,5 @@ class Pipeline:
         if self.notifier is None:
             print("未設定 TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID，略過推播")
             return
-        self.notifier.notify_alerts(hits, scope)
+        self.notifier.notify_alerts(hits, scope)  # [步驟 7] 推播 Telegram
         print(f"已推播 {len(hits)} 筆告警（{scope}）")

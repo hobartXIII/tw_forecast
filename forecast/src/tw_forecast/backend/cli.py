@@ -51,6 +51,7 @@ def build_pipeline(dry_run: bool, from_sample: bool) -> Pipeline:
 
 
 def main(argv: list[str] | None = None) -> None:
+    """[步驟 1] 啟動：載入 .env、解析參數、判斷執行來源、組裝 Pipeline，之後交給 Pipeline.run（步驟 2～7）。"""
     load_dotenv(ROOT / ".env")
     parser = argparse.ArgumentParser()
     parser.add_argument("--dry-run", action="store_true", help="不寫入資料庫、不推播")
