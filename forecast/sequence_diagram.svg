@@ -1,166 +1,103 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 820" width="100%" height="100%" style="background:#0b1120; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, 'PingFang TC', 'Microsoft JhengHei', sans-serif;">
-  <defs>
-    <!-- 背景網格 -->
-    <pattern id="seqGrid" width="40" height="40" patternUnits="userSpaceOnUse">
-      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1e293b" stroke-width="0.75" opacity="0.6"/>
-    </pattern>
-
-    <!-- 漸層 -->
-    <linearGradient id="seqTitleGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-      <stop offset="0%" stop-color="#38bdf8"/>
-      <stop offset="50%" stop-color="#818cf8"/>
-      <stop offset="100%" stop-color="#34d399"/>
-    </linearGradient>
-
-    <!-- 陰影 -->
-    <filter id="seqShadow" x="-10%" y="-10%" width="120%" height="120%">
-      <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#000" flood-opacity="0.5"/>
-    </filter>
-
-    <!-- 箭頭標記 -->
-    <marker id="arr-cyan" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-      <path d="M 0 1 L 8 5 L 0 9 z" fill="#38bdf8"/>
-    </marker>
-    <marker id="arr-emerald" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-      <path d="M 0 1 L 8 5 L 0 9 z" fill="#34d399"/>
-    </marker>
-    <marker id="arr-amber" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-      <path d="M 0 1 L 8 5 L 0 9 z" fill="#fbbf24"/>
-    </marker>
-    <marker id="arr-purple" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-      <path d="M 0 1 L 8 5 L 0 9 z" fill="#c084fc"/>
-    </marker>
-  </defs>
-
-  <!-- 背景 -->
-  <rect width="100%" height="100%" fill="url(#seqGrid)"/>
-
-  <!-- 標題 -->
-  <g transform="translate(600, 42)" text-anchor="middle">
-    <text font-size="24" font-weight="800" fill="url(#seqTitleGrad)" letter-spacing="1.2">
-      ⚡ 核心資料流程時序圖 (Core Data Flow Sequence Diagram)
-    </text>
-    <text y="26" font-size="13" fill="#94a3b8" font-weight="500">
-      流程一：Python 打 API 存 DB ➔ 流程二：DB 撈取轉 JSON 提供前端 (自訂排程執行)
-    </text>
-  </g>
-
-  <!-- ==================== 角色參與者 (Lifelines) ==================== -->
-  <!-- 1. GitHub Actions (X=90) -->
-  <g transform="translate(90, 95)" filter="url(#seqShadow)">
-    <rect x="-70" y="0" width="140" height="42" rx="8" fill="#1e293b" stroke="#818cf8" stroke-width="1.5"/>
-    <text y="26" font-size="12" font-weight="700" fill="#f8fafc" text-anchor="middle">⚙️ GitHub Actions</text>
-  </g>
-  <line x1="90" y1="137" x2="90" y2="760" stroke="#334155" stroke-width="1.5" stroke-dasharray="5,5"/>
-
-  <!-- 2. 中央氣象署 API (X=270) -->
-  <g transform="translate(270, 95)" filter="url(#seqShadow)">
-    <rect x="-70" y="0" width="140" height="42" rx="8" fill="#1e293b" stroke="#38bdf8" stroke-width="1.5"/>
-    <text y="26" font-size="12" font-weight="700" fill="#f8fafc" text-anchor="middle">🌤️ 氣象署 CWA API</text>
-  </g>
-  <line x1="270" y1="137" x2="270" y2="760" stroke="#334155" stroke-width="1.5" stroke-dasharray="5,5"/>
-
-  <!-- 3. fetch_and_store.py (X=460) -->
-  <g transform="translate(460, 95)" filter="url(#seqShadow)">
-    <rect x="-75" y="0" width="150" height="42" rx="8" fill="#1e293b" stroke="#0284c7" stroke-width="1.5"/>
-    <text y="26" font-size="12" font-weight="700" fill="#f8fafc" text-anchor="middle">🐍 fetch_and_store.py</text>
-  </g>
-  <line x1="460" y1="137" x2="460" y2="760" stroke="#334155" stroke-width="1.5" stroke-dasharray="5,5"/>
-
-  <!-- 4. 資料庫 DB (X=650) -->
-  <g transform="translate(650, 95)" filter="url(#seqShadow)">
-    <rect x="-70" y="0" width="140" height="42" rx="8" fill="#1e293b" stroke="#0ea5e9" stroke-width="1.5"/>
-    <text y="26" font-size="12" font-weight="700" fill="#f8fafc" text-anchor="middle">🗄️ 資料庫 (DB)</text>
-  </g>
-  <line x1="650" y1="137" x2="650" y2="760" stroke="#334155" stroke-width="1.5" stroke-dasharray="5,5"/>
-
-  <!-- 5. Google Chat Webhook (X=830) -->
-  <g transform="translate(830, 95)" filter="url(#seqShadow)">
-    <rect x="-70" y="0" width="140" height="42" rx="8" fill="#1e293b" stroke="#fbbf24" stroke-width="1.5"/>
-    <text y="26" font-size="12" font-weight="700" fill="#f8fafc" text-anchor="middle">🔔 Google Chat</text>
-  </g>
-  <line x1="830" y1="137" x2="830" y2="760" stroke="#334155" stroke-width="1.5" stroke-dasharray="5,5"/>
-
-  <!-- 6. export_db_to_json.py (X=1000) -->
-  <g transform="translate(1000, 95)" filter="url(#seqShadow)">
-    <rect x="-80" y="0" width="160" height="42" rx="8" fill="#1e293b" stroke="#34d399" stroke-width="1.5"/>
-    <text y="26" font-size="12" font-weight="700" fill="#f8fafc" text-anchor="middle">⚙️ export_db_to_json.py</text>
-  </g>
-  <line x1="1000" y1="137" x2="1000" y2="760" stroke="#334155" stroke-width="1.5" stroke-dasharray="5,5"/>
-
-  <!-- 7. 前端介面 (X=1130) -->
-  <g transform="translate(1130, 95)" filter="url(#seqShadow)">
-    <rect x="-55" y="0" width="110" height="42" rx="8" fill="#1e293b" stroke="#c084fc" stroke-width="1.5"/>
-    <text y="26" font-size="12" font-weight="700" fill="#f8fafc" text-anchor="middle">🌐 前端介面</text>
-  </g>
-  <line x1="1130" y1="137" x2="1130" y2="760" stroke="#334155" stroke-width="1.5" stroke-dasharray="5,5"/>
-
-  <!-- ==================== 流程一區塊標籤 ==================== -->
-  <g transform="translate(40, 155)">
-    <rect width="840" height="280" rx="10" fill="#0284c7" fill-opacity="0.08" stroke="#0284c7" stroke-width="1" stroke-dasharray="4,4"/>
-    <rect x="12" y="10" width="310" height="24" rx="5" fill="#0284c7"/>
-    <text x="20" y="27" font-size="12" font-weight="700" fill="#ffffff">【流程一】Python 打 API 取資料存 DB</text>
-  </g>
-
-  <!-- 步驟 1: GHA 啟動腳本 -->
-  <line x1="90" y1="205" x2="452" y2="205" stroke="#38bdf8" stroke-width="1.8" marker-end="url(#arr-cyan)"/>
-  <text x="240" y="198" font-size="12" fill="#38bdf8" font-weight="600" text-anchor="middle">1. 依照自訂排程/手動觸發，注入 Secrets 金鑰並啟動</text>
-
-  <!-- 步驟 2: 呼叫氣象署 API -->
-  <line x1="460" y1="240" x2="278" y2="240" stroke="#38bdf8" stroke-width="1.8" marker-end="url(#arr-cyan)"/>
-  <text x="365" y="233" font-size="12" fill="#38bdf8" font-weight="600" text-anchor="middle">2. 發送 GET 請求 (帶入授權碼)</text>
-
-  <!-- 步驟 3: 回傳原始 JSON -->
-  <line x1="270" y1="270" x2="452" y2="270" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="4,4" marker-end="url(#arr-cyan)"/>
-  <text x="365" y="263" font-size="12" fill="#94a3b8" font-weight="500" text-anchor="middle">3. 回傳最新預報 JSON 資料</text>
-
-  <!-- 步驟 4: Pandas 清洗內部自調 -->
-  <path d="M 460 295 C 500 295, 500 325, 465 325" stroke="#818cf8" stroke-width="1.6" fill="none" marker-end="url(#arr-cyan)"/>
-  <text x="510" y="315" font-size="12" fill="#818cf8" font-weight="600">4. Pandas 清洗並結構化資料</text>
-
-  <!-- 步驟 5: 寫入資料庫 -->
-  <line x1="460" y1="355" x2="642" y2="355" stroke="#38bdf8" stroke-width="2" marker-end="url(#arr-cyan)"/>
-  <text x="550" y="348" font-size="12" fill="#38bdf8" font-weight="600" text-anchor="middle">5. 批量寫入 / Upsert 更新至 DB</text>
-
-  <!-- 步驟 6: 若條件符合推播 Google Chat -->
-  <line x1="460" y1="400" x2="822" y2="400" stroke="#fbbf24" stroke-width="2" stroke-dasharray="4,4" marker-end="url(#arr-amber)"/>
-  <text x="640" y="392" font-size="12" fill="#fbbf24" font-weight="600" text-anchor="middle">6. [條件觸發] 降雨機率 ≥ 60% 發送 Google Chat 卡片推播 🔔</text>
-
-  <!-- ==================== 流程二區塊標籤 ==================== -->
-  <g transform="translate(40, 460)">
-    <rect width="1120" height="275" rx="10" fill="#059669" fill-opacity="0.08" stroke="#059669" stroke-width="1" stroke-dasharray="4,4"/>
-    <rect x="12" y="10" width="340" height="24" rx="5" fill="#059669"/>
-    <text x="20" y="27" font-size="12" font-weight="700" fill="#ffffff">【流程二】DB 撈取資料轉 JSON 提供前端</text>
-  </g>
-
-  <!-- 步驟 7: 啟動流程二轉換模組 -->
-  <line x1="90" y1="520" x2="992" y2="520" stroke="#34d399" stroke-width="1.8" marker-end="url(#arr-emerald)"/>
-  <text x="500" y="512" font-size="12" fill="#34d399" font-weight="600" text-anchor="middle">7. 接續啟動 export_db_to_json.py 導出模組</text>
-
-  <!-- 步驟 8: 查詢 DB -->
-  <line x1="1000" y1="560" x2="658" y2="560" stroke="#34d399" stroke-width="1.8" marker-end="url(#arr-emerald)"/>
-  <text x="820" y="552" font-size="12" fill="#34d399" font-weight="600" text-anchor="middle">8. 執行 SQL 查詢全台最新時段預報與趨勢</text>
-
-  <!-- 步驟 9: DB 回傳紀錄 -->
-  <line x1="650" y1="595" x2="992" y2="595" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="4,4" marker-end="url(#arr-emerald)"/>
-  <text x="820" y="587" font-size="12" fill="#94a3b8" font-weight="500" text-anchor="middle">9. 回傳結構化資料紀錄集</text>
-
-  <!-- 步驟 10: 產出標準 JSON -->
-  <path d="M 1000 625 C 1040 625, 1040 655, 1005 655" stroke="#fbbf24" stroke-width="1.6" fill="none" marker-end="url(#arr-amber)"/>
-  <text x="1050" y="645" font-size="12" fill="#fbbf24" font-weight="600">10. 序列化產出 weather_latest.json 📄</text>
-
-  <!-- 步驟 11: 提供給前端 -->
-  <line x1="1000" y1="695" x2="1122" y2="695" stroke="#c084fc" stroke-width="2" marker-end="url(#arr-purple)"/>
-  <text x="1060" y="687" font-size="12" fill="#c084fc" font-weight="600" text-anchor="middle">11. 提供 JSON</text>
-
-  <!-- 步驟 12: 前端渲染 -->
-  <path d="M 1130 715 C 1165 715, 1165 745, 1135 745" stroke="#c084fc" stroke-width="1.6" fill="none" marker-end="url(#arr-purple)"/>
-  <text x="1100" y="760" font-size="11" fill="#e9d5ff" text-anchor="end">12. 前端免連 DB，直接渲染台灣地圖、折線圖與預報卡片 📊</text>
-
-  <!-- 底部說明 -->
-  <g transform="translate(600, 795)" text-anchor="middle">
-    <text font-size="11" fill="#64748b">
-      © 2026 Taiwan Weather Forecast System • 繁體中文全流程時序規範 • 排程時間由使用者自由自訂配置
-    </text>
-  </g>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1490 1423" width="1490" height="1423" font-family="'Microsoft JhengHei','PingFang TC','Noto Sans TC',sans-serif">
+<defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#6b7280"/></marker></defs>
+<rect width="1490" height="1423" fill="#ffffff"/>
+<text x="30" y="38" font-size="22" font-weight="800" fill="#1f2937">台灣天氣預報系統 — 核心資料流程時序圖</text>
+<text x="30" y="60" font-size="12.5" fill="#4b5563">後端排程寫入資料庫，前端只讀；「立即更新」與告警設定都經由伺服器端處理，金鑰不會到瀏覽器</text>
+<line x1="130" y1="130" x2="130" y2="1399" stroke="#b8bec6" stroke-width="1.3" stroke-dasharray="5 5"/>
+<rect x="42" y="84" width="176" height="46" rx="9" fill="#f4f5f7" stroke="#9aa0a6" stroke-width="1.6"/>
+<text x="130" y="104" font-size="14" font-weight="700" fill="#1f2937" text-anchor="middle">使用者</text>
+<text x="130" y="121" font-size="11.5" fill="#4b5563" text-anchor="middle">瀏覽器／手機</text>
+<line x1="380" y1="130" x2="380" y2="1399" stroke="#b8bec6" stroke-width="1.3" stroke-dasharray="5 5"/>
+<rect x="292" y="84" width="176" height="46" rx="9" fill="#fff5e6" stroke="#e8962a" stroke-width="1.6"/>
+<text x="380" y="104" font-size="14" font-weight="700" fill="#1f2937" text-anchor="middle">儀表板</text>
+<text x="380" y="121" font-size="11.5" fill="#4b5563" text-anchor="middle">Streamlit（流程二）</text>
+<line x1="630" y1="130" x2="630" y2="1399" stroke="#b8bec6" stroke-width="1.3" stroke-dasharray="5 5"/>
+<rect x="542" y="84" width="176" height="46" rx="9" fill="#edf9f1" stroke="#3aa56b" stroke-width="1.6"/>
+<text x="630" y="104" font-size="14" font-weight="700" fill="#1f2937" text-anchor="middle">Supabase</text>
+<text x="630" y="121" font-size="11.5" fill="#4b5563" text-anchor="middle">PostgreSQL</text>
+<line x1="880" y1="130" x2="880" y2="1399" stroke="#b8bec6" stroke-width="1.3" stroke-dasharray="5 5"/>
+<rect x="792" y="84" width="176" height="46" rx="9" fill="#eef6ff" stroke="#4a90d9" stroke-width="1.6"/>
+<text x="880" y="104" font-size="14" font-weight="700" fill="#1f2937" text-anchor="middle">後端 Pipeline</text>
+<text x="880" y="121" font-size="11.5" fill="#4b5563" text-anchor="middle">GitHub Actions（流程一）</text>
+<line x1="1130" y1="130" x2="1130" y2="1399" stroke="#b8bec6" stroke-width="1.3" stroke-dasharray="5 5"/>
+<rect x="1042" y="84" width="176" height="46" rx="9" fill="#f4f5f7" stroke="#9aa0a6" stroke-width="1.6"/>
+<text x="1130" y="104" font-size="14" font-weight="700" fill="#1f2937" text-anchor="middle">氣象署 API</text>
+<text x="1130" y="121" font-size="11.5" fill="#4b5563" text-anchor="middle">F-D0047-091</text>
+<line x1="1380" y1="130" x2="1380" y2="1399" stroke="#b8bec6" stroke-width="1.3" stroke-dasharray="5 5"/>
+<rect x="1292" y="84" width="176" height="46" rx="9" fill="#f4f5f7" stroke="#9aa0a6" stroke-width="1.6"/>
+<text x="1380" y="104" font-size="14" font-weight="700" fill="#1f2937" text-anchor="middle">Telegram</text>
+<text x="1380" y="121" font-size="11.5" fill="#4b5563" text-anchor="middle">Bot API</text>
+<rect x="440" y="508" width="1040" height="210" rx="8" fill="none" stroke="#c0392b" stroke-width="1.4"/>
+<rect x="440" y="508" width="41" height="20" rx="4" fill="#c0392b"/>
+<text x="448" y="522" font-size="11.5" font-weight="700" fill="#ffffff">alt</text>
+<text x="489" y="523" font-size="12" font-weight="600" fill="#c0392b">只有排程（schedule）才判斷告警；手動只更新資料</text>
+<rect x="780" y="644" width="700" height="62" rx="8" fill="none" stroke="#7a5cc4" stroke-width="1.4"/>
+<rect x="780" y="644" width="41" height="20" rx="4" fill="#7a5cc4"/>
+<text x="788" y="658" font-size="11.5" font-weight="700" fill="#ffffff">opt</text>
+<text x="829" y="659" font-size="12" font-weight="600" fill="#7a5cc4">有符合條件的預報時段</text>
+<rect x="30" y="948" width="1200" height="215" rx="8" fill="none" stroke="#7a5cc4" stroke-width="1.4"/>
+<rect x="30" y="948" width="41" height="20" rx="4" fill="#7a5cc4"/>
+<text x="38" y="962" font-size="11.5" font-weight="700" fill="#ffffff">opt</text>
+<text x="79" y="963" font-size="12" font-weight="600" fill="#7a5cc4">使用者按下「立即更新」</text>
+<rect x="30" y="1177" width="700" height="198" rx="8" fill="none" stroke="#7a5cc4" stroke-width="1.4"/>
+<rect x="30" y="1177" width="41" height="20" rx="4" fill="#7a5cc4"/>
+<text x="38" y="1191" font-size="11.5" font-weight="700" fill="#ffffff">opt</text>
+<text x="79" y="1192" font-size="12" font-weight="600" fill="#7a5cc4">管理者調整告警設定</text>
+<rect x="20" y="178" width="1450" height="28" rx="6" fill="#3a7fc4" fill-opacity="0.13" stroke="#3a7fc4"/>
+<text x="34" y="197" font-size="14" font-weight="700" fill="#3a7fc4" text-anchor="start">流程一：後端擷取入庫（排程或手動觸發）</text>
+<rect x="496.7099999999998" y="222" width="766.5800000000004" height="42" rx="6" fill="#fffbe6" stroke="#e0c341"/>
+<text x="880.0" y="241" font-size="12" font-weight="400" fill="#1f2937" text-anchor="middle">cron（台灣 02:45 起每 3 小時）或 workflow_dispatch 啟動</text>
+<text x="880.0" y="256" font-size="12" font-weight="400" fill="#1f2937" text-anchor="middle">載入 GitHub Secrets，判斷執行來源：schedule／manual</text>
+<line x1="880" y1="312" x2="1123" y2="312" stroke="#6b7280" stroke-width="1.6" marker-end="url(#ah)"/>
+<text x="1005.0" y="291" font-size="12" font-weight="400" fill="#1f2937" text-anchor="middle">GET 一週預報（帶 API Key）</text>
+<text x="1005.0" y="306" font-size="12" font-weight="400" fill="#1f2937" text-anchor="middle">失敗最多重試 3 次；429 直接中止</text>
+<line x1="1130" y1="348" x2="887" y2="348" stroke="#6b7280" stroke-width="1.6" stroke-dasharray="6 4" marker-end="url(#ah)"/>
+<text x="1005.0" y="342" font-size="12" font-weight="400" fill="#1f2937" text-anchor="middle">回傳未來 1 週預報 JSON</text>
+<path d="M880,368 h30 v36 h-30" fill="none" stroke="#6b7280" stroke-width="1.6" marker-end="url(#ah)"/>
+<text x="918" y="383" font-size="12" font-weight="400" fill="#1f2937" text-anchor="start">ForecastParser 解析</text>
+<text x="918" y="398" font-size="12" font-weight="400" fill="#1f2937" text-anchor="start">補時區、缺值轉 NULL</text>
+<line x1="880" y1="456" x2="637" y2="456" stroke="#3a7fc4" stroke-width="1.6" marker-end="url(#ah)"/>
+<text x="755.0" y="435" font-size="12" font-weight="400" fill="#1f2937" text-anchor="middle">upsert weather_forecasts</text>
+<text x="755.0" y="450" font-size="12" font-weight="400" fill="#1f2937" text-anchor="middle">（單一交易，service_role）</text>
+<line x1="880" y1="492" x2="637" y2="492" stroke="#3a7fc4" stroke-width="1.6" marker-end="url(#ah)"/>
+<text x="755.0" y="486" font-size="12" font-weight="400" fill="#1f2937" text-anchor="middle">記錄 pipeline_status（success + 時間）</text>
+<line x1="630" y1="570" x2="873" y2="570" stroke="#3a7fc4" stroke-width="1.6" stroke-dasharray="6 4" marker-end="url(#ah)"/>
+<text x="755.0" y="549" font-size="12" font-weight="400" fill="#1f2937" text-anchor="middle">讀取 alert_city_settings／alert_slot_settings</text>
+<text x="755.0" y="564" font-size="12" font-weight="400" fill="#1f2937" text-anchor="middle">讀不到就不發送（fail closed）</text>
+<path d="M880,590 h30 v36 h-30" fill="none" stroke="#6b7280" stroke-width="1.6" marker-end="url(#ah)"/>
+<text x="918" y="605" font-size="12" font-weight="400" fill="#1f2937" text-anchor="start">alerts：發送時段、判斷視窗、</text>
+<text x="918" y="620" font-size="12" font-weight="400" fill="#1f2937" text-anchor="start">降雨／低溫／高溫條件</text>
+<line x1="880" y1="692" x2="1373" y2="692" stroke="#6b7280" stroke-width="1.6" marker-end="url(#ah)"/>
+<text x="1130.0" y="686" font-size="12" font-weight="400" fill="#1f2937" text-anchor="middle">POST sendMessage：告警訊息（token 不外洩）</text>
+<rect x="20" y="742" width="1450" height="28" rx="6" fill="#d98a1f" fill-opacity="0.13" stroke="#d98a1f"/>
+<text x="34" y="761" font-size="14" font-weight="700" fill="#d98a1f" text-anchor="start">流程二：前端讀庫呈現（Streamlit）</text>
+<line x1="130" y1="802" x2="373" y2="802" stroke="#6b7280" stroke-width="1.6" marker-end="url(#ah)"/>
+<text x="255.0" y="796" font-size="12" font-weight="400" fill="#1f2937" text-anchor="middle">開啟頁面、選擇地區或縣市</text>
+<line x1="380" y1="852" x2="623" y2="852" stroke="#2e9560" stroke-width="1.6" marker-end="url(#ah)"/>
+<text x="505.0" y="831" font-size="12" font-weight="400" fill="#1f2937" text-anchor="middle">唯讀查詢：pipeline_status、目前時段、</text>
+<text x="505.0" y="846" font-size="12" font-weight="400" fill="#1f2937" text-anchor="middle">未來預報（anon 金鑰，RLS）</text>
+<line x1="630" y1="888" x2="387" y2="888" stroke="#2e9560" stroke-width="1.6" stroke-dasharray="6 4" marker-end="url(#ah)"/>
+<text x="505.0" y="882" font-size="12" font-weight="400" fill="#1f2937" text-anchor="middle">資料列（只取最新一批 updated_at）</text>
+<path d="M380,908 h30 v22 h-30" fill="none" stroke="#6b7280" stroke-width="1.6" marker-end="url(#ah)"/>
+<text x="418" y="923" font-size="12" font-weight="400" fill="#1f2937" text-anchor="start">渲染摘要、地圖、圖表與表格</text>
+<line x1="130" y1="996" x2="373" y2="996" stroke="#6b7280" stroke-width="1.6" marker-end="url(#ah)"/>
+<text x="255.0" y="990" font-size="12" font-weight="400" fill="#1f2937" text-anchor="middle">按下按鈕</text>
+<path d="M380,1016 h30 v36 h-30" fill="none" stroke="#6b7280" stroke-width="1.6" marker-end="url(#ah)"/>
+<text x="418" y="1031" font-size="12" font-weight="400" fill="#1f2937" text-anchor="start">update_gate：距上次成功滿 20 分鐘，</text>
+<text x="418" y="1046" font-size="12" font-weight="400" fill="#1f2937" text-anchor="start">且觸發後 5 分鐘內尚無新紀錄則鎖定</text>
+<line x1="380" y1="1104" x2="873" y2="1104" stroke="#d98a1f" stroke-width="1.6" marker-end="url(#ah)"/>
+<text x="630.0" y="1083" font-size="12" font-weight="400" fill="#1f2937" text-anchor="middle">POST workflow_dispatch（GH_DISPATCH_TOKEN）</text>
+<text x="630.0" y="1098" font-size="12" font-weight="400" fill="#1f2937" text-anchor="middle">記下觸發時間，60 秒後自動重整</text>
+<rect x="574.2" y="1124" width="611.5999999999999" height="27" rx="6" fill="#fffbe6" stroke="#e0c341"/>
+<text x="880.0" y="1143" font-size="12" font-weight="400" fill="#1f2937" text-anchor="middle">後端回到流程一（手動執行：只更新資料、不推播）</text>
+<line x1="130" y1="1225" x2="373" y2="1225" stroke="#6b7280" stroke-width="1.6" marker-end="url(#ah)"/>
+<text x="255.0" y="1219" font-size="12" font-weight="400" fill="#1f2937" text-anchor="middle">輸入管理者密碼</text>
+<line x1="380" y1="1261" x2="623" y2="1261" stroke="#d98a1f" stroke-width="1.6" marker-end="url(#ah)"/>
+<text x="505.0" y="1255" font-size="12" font-weight="400" fill="#1f2937" text-anchor="middle">RPC admin_get_alert_settings(密碼)</text>
+<line x1="630" y1="1311" x2="387" y2="1311" stroke="#d98a1f" stroke-width="1.6" stroke-dasharray="6 4" marker-end="url(#ah)"/>
+<text x="505.0" y="1290" font-size="12" font-weight="400" fill="#1f2937" text-anchor="middle">bcrypt 驗證通過 → 回傳設定</text>
+<text x="505.0" y="1305" font-size="12" font-weight="400" fill="#1f2937" text-anchor="middle">錯誤密碼被拒絕並延遲約 1 秒</text>
+<line x1="380" y1="1361" x2="623" y2="1361" stroke="#d98a1f" stroke-width="1.6" marker-end="url(#ah)"/>
+<text x="505.0" y="1340" font-size="12" font-weight="400" fill="#1f2937" text-anchor="middle">RPC admin_save_alert_settings</text>
+<text x="505.0" y="1355" font-size="12" font-weight="400" fill="#1f2937" text-anchor="middle">（前端先驗證門檻範圍，資料庫再以 CHECK 把關）</text>
 </svg>

@@ -34,9 +34,9 @@
 │ 🌟 流程一：Python 打 API 取資料存 DB (Ingestion & Persistence)             │
 │    執行環境：GitHub Actions (排程 / 手動觸發)，密鑰存於 GitHub Secrets     │
 │                                                                            │
-│ [中央氣象署 CWA API] ──(requests)──> [Pandas 清洗] ──> [Supabase 雲端 DB]  │
+│ [中央氣象署 CWA API] ──(requests)──> [解析清洗] ──> [Supabase 雲端 DB]     │
 │                                                                            │
-│ * 觸發條件滿足時 (降雨率 >= 60%)：同時推播告警至 [Telegram]                │
+│ * 僅排程執行：符合資料庫告警設定 (縣市、條件、發送時段) 時推播至 [Telegram]│
 └────────────────────────────────────────────────────────────────────────────┘
                                  │  (僅透過資料庫溝通)
                                  ▼
@@ -44,9 +44,9 @@
 │ 🌟 流程二：Streamlit 讀 DB 視覺化 (Serving & Presentation)                 │
 │    執行環境：Streamlit Community Cloud                                     │
 │                                                                            │
-│ [Supabase 雲端 DB] ──(supabase-py / psycopg2 唯讀)──> [Streamlit + Folium] │
+│ [Supabase 雲端 DB] ──(supabase-py 唯讀，anon 金鑰)──> [Streamlit + Folium] │
 │                                                                            │
-│ * 互動式儀表板：折線圖 + 明細表格 + Folium 台灣地圖                        │
+│ * 互動式儀表板：趨勢圖 + 明細表格 + Folium 地圖 + 告警設定 (需管理者密碼)  │
 └────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -62,39 +62,62 @@
 ### 2.1 系統總體架構圖 (Architecture Diagram)
 
 ```mermaid
-flowchart TD
-    subgraph Stage1["【流程一：Python 打 API 取資料存 DB (GitHub Actions)】"]
-        CWA["🌤️ 中央氣象署 API (CWA F-D0047-091 一週預報)"]
-        PyIngest["🐍 核心腳本: fetch_and_store.py\n(發送 GET 請求、Pandas 清洗整理)"]
-        GChat["🔔 Telegram Bot (降雨機率 >= 60% 手機通知)"]
+flowchart LR
+    subgraph Stage1["【流程一：後端擷取入庫 (GitHub Actions)】"]
+        direction TB
+        Trigger["⏰ 觸發：排程 cron (台灣 02:45 起每 3 小時)
+或手動 workflow_dispatch"]
+        CWA["🌤️ 中央氣象署 API
+(F-D0047-091 一週預報)"]
+        Pipeline["🐍 Pipeline
+CwaClient 取得 → ForecastParser 解析 → Repository 寫入"]
+        Alerts["📐 alerts 告警規則
+發送時段、判斷視窗、降雨/低溫/高溫條件"]
+        Telegram["🔔 Telegram Bot (手機通知)"]
 
-        CWA -->|1. 取得原始 JSON 氣象| PyIngest
-        PyIngest -->|2. 觸發降雨/氣溫警戒| GChat
+        Trigger --> Pipeline
+        CWA -->|"1. 取得原始 JSON"| Pipeline
+        Pipeline -->|"4. 僅排程：判斷告警"| Alerts
+        Alerts -->|"5. 符合條件"| Telegram
     end
 
-    subgraph DataStorage["【資料持久層 (DB)】"]
-        CloudDB[("🗄️ Supabase PostgreSQL (weather_forecasts)")]
+    subgraph DataStorage["【Supabase PostgreSQL】"]
+        direction TB
+        Forecasts[("weather_forecasts")]
+        Status[("pipeline_status")]
+        Settings[("alert_city_settings
+alert_slot_settings
+anon 讀不到也寫不了")]
+        AdminFn["🔐 管理者函式
+admin_get / save_alert_settings"]
     end
 
-    PyIngest -->|3. 結構化資料寫入 / Upsert (service_role)| CloudDB
-
-    subgraph Stage2["【流程二：Streamlit 讀 DB 視覺化 (Streamlit Community Cloud)】"]
-        StreamlitApp["📊 Streamlit 互動儀表板\n(折線圖 + 明細表格 + Folium 地圖)"]
-        RefreshBtn["🔄 立即更新按鈕\n(觸發 GitHub Actions workflow_dispatch)"]
-
-        CloudDB -->|4. 唯讀查詢 (supabase-py / psycopg2)| StreamlitApp
-        StreamlitApp --- RefreshBtn
+    subgraph Stage2["【流程二：Streamlit 讀 DB 視覺化】"]
+        direction TB
+        Dashboard["📊 儀表板
+摘要、地圖、趨勢圖、明細、日期查詢"]
+        RefreshBtn["🔄 立即更新
+間隔 20 分鐘 + 觸發後鎖定"]
+        AdminPanel["⚙️ 告警設定視窗
+管理者密碼"]
     end
 
-    RefreshBtn -.->|5. GitHub API 手動觸發| PyIngest
+    Pipeline -->|"2. upsert (service_role)"| Forecasts
+    Pipeline -->|"3. 記錄執行狀態"| Status
+    Settings -.->|"讀取設定"| Alerts
+    AdminFn --- Settings
+    Forecasts -->|"6. 唯讀查詢 (anon)"| Dashboard
+    Status -->|"唯讀"| Dashboard
+    Dashboard --- RefreshBtn
+    Dashboard --- AdminPanel
+    RefreshBtn -.->|"7. GitHub API 觸發"| Trigger
+    AdminPanel <-->|"RPC + 密碼"| AdminFn
 ```
 
 #### 🖼️ 系統總體架構圖視覺呈現 (Architecture Visual Diagram)
 ![系統總體架構圖 (向量繁中版)](architecture_diagram.svg)
 
-> 💡 **檢視提示**：
-> - 亦可開啟包含切換功能的網頁：[view_architecture.html](view_architecture.html)
-> - ⚠️ 上述圖檔為 v1.1.0 版本繪製（含「匯出 JSON」與「Web 前端」），與本版架構不一致，需重新繪製。
+> 💡 上圖為 Mermaid 版本；同內容的向量圖檔為 `architecture_diagram.svg`，兩者皆已依目前架構重繪（v1.12.5）。
 
 ---
 
@@ -103,36 +126,49 @@ flowchart TD
 ```mermaid
 sequenceDiagram
     autonumber
-    participant GHA as GitHub Actions (排程/手動觸發)
+    participant U as 使用者
+    participant FE as 儀表板 (Streamlit)
+    participant DB as Supabase
+    participant BE as 後端 Pipeline (GitHub Actions)
     participant CWA as 中央氣象署 API
-    participant P1 as fetch_and_store.py (流程一)
-    participant DB as 雲端資料庫 (Supabase)
-    participant GC as Telegram Bot API
-    participant FE as Streamlit 儀表板 (流程二)
+    participant TG as Telegram Bot API
 
-    Note over GHA,DB: 🌟 流程一：Python 打 API 取資料存 DB
-    GHA->>P1: 啟動流程一腳本 (載入 GitHub Secrets)
-    P1->>CWA: 發送 HTTP GET 請求取得預報 JSON
-    CWA-->>P1: 回傳未來 1 週預報資料
-    P1->>P1: Pandas 解析、補時區、轉換為結構化資料集
-    P1->>DB: 批量 Upsert 至 weather_forecasts (service_role)
-    opt 若降雨機率 >= 60% 或極端溫度
-        P1->>GC: POST sendMessage 發送告警訊息 🔔
+    Note over BE,DB: 🌟 流程一：後端擷取入庫
+    BE->>BE: cron 或 workflow_dispatch 啟動，載入 GitHub Secrets
+    BE->>CWA: GET 一週預報 (失敗最多重試 3 次，429 中止)
+    CWA-->>BE: 預報 JSON
+    BE->>BE: ForecastParser 解析、補時區、缺值轉 NULL
+    BE->>DB: upsert weather_forecasts (單一交易，service_role)
+    BE->>DB: 記錄 pipeline_status (success)
+    alt 只有排程 (schedule) 才判斷告警
+        DB-->>BE: 告警設定 (讀不到就不發送)
+        BE->>BE: 判斷發送時段、視窗與降雨/低溫/高溫條件
+        opt 有符合條件的預報時段
+            BE->>TG: POST sendMessage 發送告警訊息 🔔
+        end
     end
 
-    Note over DB,FE: 🌟 流程二：Streamlit 讀 DB 視覺化
-    FE->>DB: 唯讀查詢目前時段與近期趨勢 (anon key / 唯讀帳號)
-    DB-->>FE: 回傳資料列
-    FE-->>FE: 渲染台灣氣溫地圖、折線圖與明細表格 📊
+    Note over U,DB: 🌟 流程二：前端讀庫呈現
+    U->>FE: 開啟頁面、選擇地區或縣市
+    FE->>DB: 唯讀查詢 (anon 金鑰，RLS)
+    DB-->>FE: 資料列 (只取最新一批)
+    FE-->>U: 摘要、地圖、圖表與表格 📊
     opt 使用者按下「立即更新」
-        FE->>GHA: POST workflow_dispatch (GH_DISPATCH_TOKEN)
+        U->>FE: 按下按鈕
+        FE->>FE: update_gate：滿 20 分鐘且未鎖定
+        FE->>BE: POST workflow_dispatch (GH_DISPATCH_TOKEN)
+    end
+    opt 管理者調整告警設定
+        U->>FE: 輸入管理者密碼
+        FE->>DB: RPC admin_get / save_alert_settings (密碼在資料庫驗證)
+        DB-->>FE: 設定資料，錯誤密碼被拒
     end
 ```
 
 #### 🖼️ 核心資料流程時序圖視覺呈現 (Sequence Visual Diagram)
 ![核心資料流程時序圖 (向量繁中版)](sequence_diagram.svg)
 
-> ⚠️ 此圖檔為 v1.1.0 版本繪製，與本版時序不一致，需重新繪製。
+> 💡 同內容的 Mermaid 版本見上方；圖檔已依目前架構重繪（v1.12.5）。
 
 ---
 
@@ -773,10 +809,10 @@ HW1/                                     # repo 根目錄
 - **驗證重構後的告警推播**：重構後的後端已在 Actions 上手動執行成功（2026-09-21 21:40 於 `6ef729a`、22:31 於 `20804d0`，寫入資料庫與更新 `pipeline_status` 皆正常）；但手動執行不推播，**告警推播路徑（讀設定 → 判斷 → Telegram）尚未在 Actions 上實際跑過**。需要有縣市已啟用、且下一個發送時段（如 2026-09-22 08:45）有符合條件的預報，才會觀察到推播；目前告警設定為使用者還原後的狀態，要驗證可暫時啟用一個縣市並把降雨門檻設為 0，驗證後改回。
 - **在雲端驗證 v1.12.1、v1.12.2**：按「立即更新」後 F5，按鈕應維持停用並顯示「已觸發更新，正在等待完成」；選一個縣市後從地區選單點「全部地區」，應回到全台。並用手機實際操作地圖（單指捲頁面、雙指操作地圖）。
 - 刪除雲端上驗證用的測試 app（它追蹤的分支 `refactor/src-layout` 已刪除，會部署失敗）。
-- 重新繪製 `architecture_diagram.svg`、`sequence_diagram.svg`（仍為 v1.1.0 版本，且尚未反映 Telegram 與告警設定）。
 - 將 workflow 的 `actions/checkout`、`actions/setup-python` 升級，消除 Node.js 20 deprecated 警告。
 
 ### 10.3 版本紀錄
+- **v1.12.5**：重繪 `architecture_diagram.svg`（系統總體架構）與 `sequence_diagram.svg`（核心資料流程），並更新 §1.1 文字圖與 §2 的 Mermaid 流程圖、時序圖，反映目前架構（Telegram、告警設定、管理者登入、`pipeline_status`、立即更新鎖定、後端不使用 pandas 等）；移除舊版檢視頁 `view_architecture.html`。
 - **v1.12.4**：待辦更新：重構後的後端手動執行已在 Actions 驗證成功，告警推播路徑仍待發送時段驗證；已合併的分支已清理，倉庫只保留 `main` 與 `old`（重構前的版本）。
 - **v1.12.3**：新增 `ARCHITECTURE.md`（每個檔案的功能、前後端資料流圖、「想改某功能該看哪個檔案」對照表）；README、規格書與 `CLAUDE.md` 更新至目前版本（單一縣市合併氣溫圖與曲線、地圖雙指手勢、立即更新鎖定、地區選單重設、`.devcontainer/`、`requirements-dev.txt`、待辦與驗證狀態）。
 - **v1.12.2**：修正已選縣市時再點地區的「全部地區」沒有反應：選了縣市時地區選單改顯示空白提示，「全部地區」成為一次真正的改變，點了即清掉縣市回到全台（見 §8.1 第 3 點）；新增 3 項整頁測試。
