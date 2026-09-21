@@ -1,14 +1,11 @@
-"""一週趨勢圖：氣溫（最高/最低）與降雨機率。時間軸一律以台灣當地時間顯示。
+"""一週趨勢圖：氣溫（最高/最低/平均）與降雨機率。時間軸一律以台灣當地時間顯示。
 
-- 單一縣市氣溫：最高/最低雙線加灰色範圍帶（temp_trend_chart）。
-- 降雨機率與多縣市/多地區氣溫：每個系列一種顏色的折線（series_chart），可點圖例強調單一系列；
-  單一縣市的降雨機率也是同樣的折線，只有一個系列。
+氣溫與降雨機率都用同一種折線圖（series_chart）：每個系列一種顏色，可點圖例強調單一系列；
+單一縣市只有一個系列。
 """
 import altair as alt
 import pandas as pd
 
-LABELS = {"max_temp": "最高氣溫", "min_temp": "最低氣溫"}
-COLORS = {"最高氣溫": "#d9480f", "最低氣溫": "#1971c2"}
 RAIN_ALERT = 60  # 與 fetch_and_store.py 的 ALERT_RAIN 一致
 # Okabe-Ito 色盲友善色盤；一個地區最多 6 個縣市，全台則是 5 個地區
 PALETTE = ["#0072B2", "#E69F00", "#009E73", "#D55E00", "#CC79A7", "#56B4E9"]
@@ -28,30 +25,6 @@ def _now_rule(times: pd.Series, now) -> alt.Chart | None:
         return None
     return (alt.Chart(pd.DataFrame({"時段": [now]}))
             .mark_rule(strokeDash=[4, 4], color="#495057").encode(x="時段:T"))
-
-
-def temp_trend_chart(df: pd.DataFrame, now) -> alt.LayerChart:
-    """df 需含 forecast_time_start (Asia/Taipei tz-aware)、min_temp、max_temp。"""
-    data = df[["min_temp", "max_temp"]].copy()
-    data["時段"] = _naive(df["forecast_time_start"])
-    long = data.melt(id_vars="時段", value_vars=list(LABELS), var_name="項目", value_name="氣溫 (°C)")
-    long["項目"] = long["項目"].map(LABELS)
-    y_scale = alt.Scale(zero=False)
-    band = (alt.Chart(data).mark_area(opacity=0.12, color="#868e96")
-            .encode(x=alt.X("時段:T", title=None, axis=X_AXIS),
-                    y=alt.Y("min_temp:Q", scale=y_scale, title="氣溫 (°C)"), y2="max_temp:Q"))
-    lines = (alt.Chart(long).mark_line(point=True, strokeJoin="round")
-             .encode(x=alt.X("時段:T", title=None, axis=X_AXIS),
-                     y=alt.Y("氣溫 (°C):Q", scale=y_scale),
-                     color=alt.Color("項目:N", scale=alt.Scale(domain=list(COLORS), range=list(COLORS.values())),
-                                     legend=alt.Legend(title=None, orient="top")),
-                     tooltip=[alt.Tooltip("時段:T", format="%m/%d %H:%M"), "項目:N",
-                              alt.Tooltip("氣溫 (°C):Q", format=".1f")]))
-    layers = [band, lines]
-    rule = _now_rule(data["時段"], now)
-    if rule is not None:
-        layers.append(rule)
-    return alt.layer(*layers).properties(height=320)
 
 
 MISSING_TIP = "0（氣象署未提供，以 0 顯示）"

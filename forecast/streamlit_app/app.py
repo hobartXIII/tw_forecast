@@ -10,9 +10,9 @@ import streamlit as st
 from streamlit_folium import st_folium
 
 from components import admin_ui, db
-from components.charts import RAIN_ALERT, series_chart, temp_trend_chart
+from components.charts import RAIN_ALERT, series_chart
 from components.format import is_night, weather_icon
-from components.map_view import build_map, display_temp
+from components.map_view import build_map, colored, display_temp, text_color
 from components.region_data import ALL_REGIONS, CITY_ORDER, REGIONS, cities_in, region_of
 from components.update_gate import MIN_INTERVAL_MINUTES, evaluate
 
@@ -219,21 +219,30 @@ def show(value, unit: str, fmt: str = ".0f") -> str:
     return "—" if value is None or pd.isna(value) else f"{value:{fmt}} {unit}"
 
 
+def temp_metric(col, label: str, value, fmt: str = ".0f", sub: str = "") -> None:
+    """外觀比照 st.metric，但數字依溫度級距上色（st.metric 的數值無法指定顏色）。"""
+    sub_html = f'<div style="font-size:14px;opacity:.7;margin-top:2px">{sub}</div>' if sub else ""
+    col.markdown(
+        f'<div style="font-size:14px;opacity:.7">{label}</div>'
+        f'<div style="font-size:36px;font-weight:600;line-height:1.3">{colored(value, show(value, "°C", fmt))}</div>'
+        f"{sub_html}", unsafe_allow_html=True)
+
+
 k1, k2, k3, k4 = st.columns(4)
 if city:  # 單一縣市：直接呈現該縣市自己的數值，天氣現象放在「平均氣溫」下方
     weather = crow["weather_condition"] if isinstance(crow["weather_condition"], str) else "—"
     icon = weather_icon(weather, is_night(crow["forecast_time_start"], crow["forecast_time_end"]))
-    k1.metric(f"{city} 平均氣溫", show(crow["avg"], "°C", ".1f"), f"{icon} {weather}".strip(), delta_color="off")
-    k2.metric("最高溫", show(crow["max_temp"], "°C"))
-    k3.metric("最低溫", show(crow["min_temp"], "°C"))
+    temp_metric(k1, f"{city} 平均氣溫", crow["avg"], ".1f", f"{icon} {weather}".strip())
+    temp_metric(k2, "最高溫", crow["max_temp"])
+    temp_metric(k3, "最低溫", crow["min_temp"])
     k4.metric("降雨機率", show(crow["rain_probability"], "%"))
 else:
     hot, hot_city = extreme("max_temp", True)
     cold, cold_city = extreme("min_temp", False)
     wet, wet_city = extreme("rain_probability", True)
-    k1.metric("平均氣溫", show(cur["avg"].mean(), "°C", ".1f"))
-    k2.metric("最高溫", show(hot, "°C"), hot_city, delta_color="off")
-    k3.metric("最低溫", show(cold, "°C"), cold_city, delta_color="off")
+    temp_metric(k1, "平均氣溫", cur["avg"].mean(), ".1f")
+    temp_metric(k2, "最高溫", hot, sub=hot_city)
+    temp_metric(k3, "最低溫", cold, sub=cold_city)
     k4.metric("最高降雨機率", show(wet, "%"), wet_city, delta_color="off")
 
 # ---------- 地圖 ----------
@@ -284,8 +293,11 @@ def make_table(src: pd.DataFrame, *, dated: bool) -> pd.DataFrame:
 
 
 def show_table(table: pd.DataFrame, drop: list[str]) -> None:
+    temp_columns = ["最低 (°C)", "最高 (°C)", "平均 (°C)"]
+    styled = table.drop(columns=drop).style.map(
+        lambda v: f"color:{text_color(v)};font-weight:700" if text_color(v) else "", subset=temp_columns)
     st.dataframe(
-        table.drop(columns=drop), width="stretch", hide_index=True,
+        styled, width="stretch", hide_index=True,
         column_config={
             "最低 (°C)": st.column_config.NumberColumn(format="%.0f"),
             "最高 (°C)": st.column_config.NumberColumn(format="%.0f"),
@@ -305,21 +317,15 @@ else:  # 全台／地區：明細右邊多一個「後續時段」分頁
 with tab_temp:
     if fc is None:
         st.info("沒有未來預報資料（資料可能已過期），請按「立即更新」。")
-    elif level == "city":
-        st.caption(f"{scope_label}｜未來一週（灰色帶為最低～最高溫範圍，虛線為現在）")
-        one = fc.dropna(subset=["min_temp", "max_temp"], how="all")
-        if one.empty:
-            st.info("沒有可繪製的氣溫資料。")
-        else:
-            st.altair_chart(temp_trend_chart(one, now), width="stretch")
-    else:
+    else:  # 全台／地區／單一縣市都用同一種折線圖（單一縣市只有一條線）
         metric_label = st.radio("氣溫指標", list(METRICS), horizontal=True, key="metric")
-        st.caption(f"{scope_label}｜{metric_label}｜每種顏色一條線，點圖例可強調單一系列，虛線為現在")
+        hint = "" if level == "city" else "每種顏色一條線，點圖例可強調單一系列，"
+        st.caption(f"{scope_label}｜{metric_label}｜{hint}虛線為現在")
         data, order = series_data(METRICS[metric_label])
         if data["值"].dropna().empty:
             st.info("沒有可繪製的氣溫資料。")
         else:
-            st.altair_chart(series_chart(data, now, f"{metric_label} (°C)", order), width="stretch")
+            st.altair_chart(series_chart(data, now, f"{metric_label} (°C)", order, zero=True), width="stretch")
 
 with tab_rain:  # 全台／地區／單一縣市都用同一種折線圖（單一縣市只有一條線）
     if fc is None or fc["rain_probability"].dropna().empty:

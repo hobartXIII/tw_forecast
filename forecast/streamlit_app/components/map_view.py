@@ -27,6 +27,17 @@ def temp_color(temp: float) -> str:
     return BANDS[_band(temp)][0]
 
 
+def text_color(value) -> str:
+    """文字用的級距色；NULL 回傳空字串（沿用預設文字色）。"""
+    return "" if pd.isna(value) else temp_color(value)
+
+
+def colored(value, text: str) -> str:
+    """把 text 依 value 的溫度級距包成有色的 <span>（HTML）；NULL 不上色。"""
+    color = text_color(value)
+    return f'<span style="color:{color};font-weight:700">{text}</span>' if color else text
+
+
 def _temp_text(value, unit: str = "°C") -> str:
     """整數溫度；NULL 顯示「—」。"""
     return "—" if pd.isna(value) else f"{value:.0f}{unit}"
@@ -72,7 +83,9 @@ def build_map(df: pd.DataFrame, fit: bool = False, highlight: str | None = None)
         weather = row.get("weather_condition")
         night = "forecast_time_start" in row and is_night(row["forecast_time_start"], row["forecast_time_end"])
         tip = (f"<b>{row['location_name']}</b><br>{weather_icon(weather, night)} {weather or '—'}<br>"
-               f"平均 {temp:.1f}°C<br>最高 {_temp_text(row['max_temp'])} ｜ 最低 {_temp_text(row['min_temp'])}<br>"
+               f"平均 {colored(temp, f'{temp:.1f}°C')}<br>"
+               f"最高 {colored(row['max_temp'], _temp_text(row['max_temp']))} ｜ "
+               f"最低 {colored(row['min_temp'], _temp_text(row['min_temp']))}<br>"
                f"降雨機率 {rain}")
         state = "normal" if highlight is None else ("selected" if row["location_name"] == highlight else "dim")
         half = 23 if state == "selected" else 19
