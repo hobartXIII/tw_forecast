@@ -165,3 +165,15 @@ st.page_link("report.py", label="報表")
 - 超量會被暫時鎖住 → 用 `st.cache_data` / `st.cache_resource`、限制 `ttl`/`max_entries`、大資料移資料庫。
 - `st.file_uploader` 預設上限 200MB → 靠 `.streamlit/config.toml` 的 `server.maxUploadSize` 調。
 - Pro/付費版指的是 Snowflake 上代管；Community Cloud 本身只有免費方案。
+
+
+## 本專案開發流程
+
+> 上面是 Streamlit 通用慣例；以下是這個 repo 的實際做法。完整說明見 `forecast/ARCHITECTURE.md`（每個檔案的功能與修改對照表）與 `forecast/SPECIFICATION.md`。
+
+- **程式位置**：正式程式碼在 `forecast/src/tw_forecast/`（`backend/` 是 GitHub Actions 的流程一、`frontend/` 是 Streamlit 儀表板），入口只有 `forecast/scripts/fetch_and_store.py` 與 `forecast/streamlit_app/app.py`，兩者只負責串接。
+- **先分析、後修改**：新想法先說明原因與方案、等使用者同意再改程式。
+- **測試**：在 `forecast/` 執行 `python -m pytest`（不連網、不連資料庫）。新功能同時補測試；純函式寫單元測試，畫面流程用 `tests/frontend/test_app_smoke.py` 的 `AppTest`。需要真實連線的檢查放 `forecast/checks/`，維運工具放 `forecast/tools/`。
+- **改 `src/` 後要重啟 `streamlit run`**，否則可能沿用舊模組而出現 `ImportError`。
+- **前端只能用 `anon` 金鑰**；金鑰與密碼不可進程式碼、日誌或錯誤訊息（用 `mask_secrets`／`translate_error` 遮蔽）。
+- **分支**：重構前的版本保留在 `old` 分支。
