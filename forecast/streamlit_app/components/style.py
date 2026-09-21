@@ -32,9 +32,10 @@ CSS = """
 .st-key-hdr_mobile { display: none; }
 @media (max-width: 640px) {
   .st-key-hdr_desktop { display: none; }
-  /* 選單按鈕靠右、寬度約 1/3（col-4；想要 1/4 改成 25%）；展開的選項需要比按鈕寬，並靠右對齊避免超出畫面 */
-  .st-key-hdr_mobile { display: block; width: 33.333% !important; margin-left: auto; }
-  [data-testid="stPopoverBody"] { min-width: 220px; max-width: calc(100vw - 32px); left: auto !important; right: 16px; }
+  /* 只讓「☰ 選單」按鈕縮成約 1/3（col-4；想要 1/4 改成 25%）並靠右；外層容器維持整列寬度，
+     因為展開的選項區寬度與定位都依外層容器（Streamlit 用 transform 定位，改 left/right 會跑出畫面） */
+  .st-key-hdr_mobile { display: block; }
+  .st-key-hdr_mobile [data-testid="stPopoverButton"] { display: flex !important; width: 33.333% !important; margin-left: auto; }
   .glass { margin-bottom: 12px; }  /* 摘要卡片在手機上上下堆疊，卡片之間要留間隔，否則會連在一起 */
 }
 
