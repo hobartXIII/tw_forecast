@@ -70,12 +70,41 @@ def test_single_city_shows_combined_temperature_chart_and_no_metric_radio(app):
     assert len(charts) == 2 and all(name in spec_text(charts[0]) for name in ("最高溫", "平均溫", "最低溫"))
 
 
+def region_value(at):
+    return next(s for s in at.selectbox if s.label == "地區").value
+
+
+def city_value(at):
+    return next(s for s in at.selectbox if s.label == "縣市").value
+
+
 def test_region_and_city_filters_are_mutually_exclusive(app):
     select(app, "縣市", "臺中市")
+    assert region_value(app) is None  # 選了縣市：地區顯示空白提示，不是「全部地區」
     select(app, "地區", "離島地區")
-    assert next(s for s in app.selectbox if s.label == "縣市").value == "全部縣市"
+    assert city_value(app) == "全部縣市" and region_value(app) == "離島地區"
     select(app, "縣市", "臺北市")
-    assert next(s for s in app.selectbox if s.label == "地區").value == "全部地區"
+    assert region_value(app) is None
+
+
+def test_choosing_all_regions_after_a_city_returns_to_all_taiwan(app):
+    """回報的問題：已選縣市時再點「全部地區」要回到全台資訊。"""
+    select(app, "縣市", "臺中市")
+    assert [t.label for t in app.tabs][2] == "📋 一週預報"  # 單一縣市畫面
+    select(app, "地區", "全部地區")
+    assert city_value(app) == "全部縣市" and region_value(app) == "全部地區"
+    assert [t.label for t in app.tabs][2] == "📋 目前時段明細"  # 回到全台畫面
+    assert not app.exception
+
+
+def test_choosing_all_cities_after_a_city_restores_all_regions(app):
+    select(app, "縣市", "臺中市")
+    select(app, "縣市", "全部縣市")
+    assert region_value(app) == "全部地區" and city_value(app) == "全部縣市"
+
+
+def test_default_selection_is_all_regions_and_all_cities(app):
+    assert region_value(app) == "全部地區" and city_value(app) == "全部縣市"
 
 
 def test_metric_radio_switches_region_chart(app):
