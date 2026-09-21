@@ -23,9 +23,13 @@ HW1/
 ├── .gitignore
 ├── requirements.txt                       # 須在根目錄，Streamlit Cloud 才偵測得到
 └── forecast/
-    ├── scripts/         # fetch_and_store.py（流程一）、check_cwa_api.py、check_rls.py
+    ├── src/tw_forecast/ # 正式程式碼：backend/（流程一）、frontend/（流程二）、config.py
+    ├── scripts/         # fetch_and_store.py（流程一入口，Actions 執行）
+    ├── tests/           # pytest 單元與整頁測試（不連網、不連資料庫）
+    ├── checks/          # 需真實連線的手動檢查：check_cwa_api、check_rls、check_admin_rpc、check_notify
+    ├── tools/           # make_admin_hash、get_telegram_chat_id
     ├── sql/             # init_supabase.sql（weather_forecasts、pipeline_status、RLS、updated_at、時區）
-    ├── streamlit_app/   # app.py（流程二）與 components/
+    ├── streamlit_app/   # app.py（流程二入口）
     ├── .streamlit/      # secrets.toml.example
     ├── SPECIFICATION.md
     └── README.md
@@ -44,14 +48,14 @@ HW1/
 2. 後端金鑰：複製 `.env.example` 為 `.env`，填入 `WEATHER_API_KEY`、`SUPABASE_URL`、`SUPABASE_KEY`（`service_role`）等值。`.env` 不會被 commit。
 3. 驗證氣象署 API 並存下範例回應：
    ```powershell
-   python scripts/check_cwa_api.py            # 存到 samples/F-D0047-091.json（不會被 commit）
+   python checks/check_cwa_api.py            # 存到 samples/F-D0047-091.json（不會被 commit）
    ```
-4. 於 Supabase SQL Editor 執行 `sql/init_supabase.sql` 建表（可重複執行；也會補上 `updated_at` 欄位、觸發器、台灣時區設定，並建立 `pipeline_status` 表）。之後可執行 `python scripts/check_rls.py` 驗證 `anon` 可讀不可寫。
+4. 於 Supabase SQL Editor 執行 `sql/init_supabase.sql` 建表（可重複執行；也會補上 `updated_at` 欄位、觸發器、台灣時區設定，並建立 `pipeline_status` 表）。之後可執行 `python checks/check_rls.py` 驗證 `anon` 可讀不可寫。
 5. 設定 Telegram 推播（只推給自己）：
    1. 在 Telegram 搜尋 **@BotFather** → `/newbot` → 取得 token，寫入 `.env` 的 `TELEGRAM_BOT_TOKEN`（**token 不要貼到聊天或 commit**）。
    2. 打開你的機器人，按 **Start**（機器人必須先被你啟動才能傳訊息給你）。
-   3. 取得 chat_id：`python scripts/get_telegram_chat_id.py`（加 `--write` 可自動寫入 `.env`）。
-   4. 確認手機收得到：`python scripts/test_notify.py`（加 `--dry-run` 只印出訊息內容）。
+   3. 取得 chat_id：`python tools/get_telegram_chat_id.py`（加 `--write` 可自動寫入 `.env`）。
+   4. 確認手機收得到：`python checks/check_notify.py`（加 `--dry-run` 只印出訊息內容）。
 6. 啟用告警（在 Supabase SQL Editor 執行；範例也在 `sql/init_supabase.sql` 檔尾）：
    ```sql
    UPDATE public.alert_city_settings SET enabled = true WHERE location_name = '臺北市';          -- 啟用臺北市
@@ -62,9 +66,9 @@ HW1/
    設定在下一個排程時槽生效。判斷視窗為「本次發送時槽到下一個啟用的發送時槽之前」，含進行中的預報時段（訊息標示進行中／即將開始）。
 7. 管理者密碼與設定面板（一次性設定）：
    1. 在 Supabase SQL Editor 執行 `sql/init_supabase.sql`（會建立 `private` schema、密碼表與兩個驗證函式）。
-   2. 相容性檢查：`pip install bcrypt`（只在本機使用，不在 `requirements.txt`），執行 `python scripts/make_admin_hash.py --selftest`，把印出的 SQL 貼到 SQL Editor 執行，結果應為 `true`。
-   3. 產生密碼雜湊：執行 `python scripts/make_admin_hash.py`，輸入 12 碼以上、大小寫加數字的隨機密碼（輸入時不顯示、不會存檔），把印出的 `INSERT` SQL 貼到 SQL Editor 執行。**不要把密碼明文貼進 SQL Editor。**
-   4. 驗證：`python scripts/check_admin_rpc.py`（輸入密碼）；再到儀表板標題列按「⚙️ 告警設定」實際登入（先把輸入法切成英文）。若顯示密碼錯誤，可用 `python scripts/make_admin_hash.py --verify`（貼上資料庫裡的 `password_hash`、輸入密碼）在本機分辨是「密碼輸入不一致」還是「雜湊本身有問題」；`getpass` 在某些終端機不支援貼上，請手動輸入密碼。
+   2. 相容性檢查：`pip install bcrypt`（只在本機使用，不在 `requirements.txt`），執行 `python tools/make_admin_hash.py --selftest`，把印出的 SQL 貼到 SQL Editor 執行，結果應為 `true`。
+   3. 產生密碼雜湊：執行 `python tools/make_admin_hash.py`，輸入 12 碼以上、大小寫加數字的隨機密碼（輸入時不顯示、不會存檔），把印出的 `INSERT` SQL 貼到 SQL Editor 執行。**不要把密碼明文貼進 SQL Editor。**
+   4. 驗證：`python checks/check_admin_rpc.py`（輸入密碼）；再到儀表板標題列按「⚙️ 告警設定」實際登入（先把輸入法切成英文）。若顯示密碼錯誤，可用 `python tools/make_admin_hash.py --verify`（貼上資料庫裡的 `password_hash`、輸入密碼）在本機分辨是「密碼輸入不一致」還是「雜湊本身有問題」；`getpass` 在某些終端機不支援貼上，請手動輸入密碼。
    5. 忘記密碼：重新執行第 3 步寫入新的雜湊值即可（頁面上沒有改密碼功能）。
 8. 試跑流程一（不寫入資料庫、不推播）：
    ```powershell
@@ -77,6 +81,16 @@ HW1/
    streamlit run streamlit_app/app.py         # http://localhost:8501
    ```
    要使用「立即更新」按鈕，另需 `GH_REPO`（`owner/repo`）與 `GH_DISPATCH_TOKEN`（僅授權 Actions 讀寫的 fine-grained PAT）。
+
+## 測試
+
+```powershell
+pip install -r ../requirements-dev.txt   # 只裝 pytest（開發用，不在 requirements.txt）
+python -m pytest                          # 在 forecast/ 執行；不連網、不連資料庫、不需要 .env 或 samples/
+```
+
+- `tests/`：自動測試（後端與前端的純邏輯、假資料庫、整頁煙霧測試）。
+- `checks/`：需要真實連線的手動檢查（CWA、Supabase RLS、管理者函式、Telegram），不屬於自動測試。
 
 ## 部署
 

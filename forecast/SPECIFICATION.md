@@ -155,7 +155,7 @@ sequenceDiagram
 
 ### 3.3 回傳 JSON 關鍵欄位解析對應
 
-> ✅ 以下結構已依實際回應（`scripts/check_cwa_api.py` 於 2026-09-20 存下的 `samples/F-D0047-091.json`，約 669 KB）驗證。
+> ✅ 以下結構已依實際回應（`checks/check_cwa_api.py` 於 2026-09-20 存下的 `samples/F-D0047-091.json`，約 669 KB）驗證。
 
 ```text
 success: true
@@ -232,7 +232,7 @@ records.Locations[]                     ← 1 筆 (LocationsName "台灣"，Data
 | `SUPABASE_URL` | String | Supabase 專案端點 URL | GitHub Secrets / 本地 `.env` |
 | `SUPABASE_KEY` | String | Supabase `service_role` 金鑰 (後端專用，繞過 RLS；嚴禁進入前端) | GitHub Secrets / 本地 `.env` |
 | `TELEGRAM_BOT_TOKEN` | String | Telegram 機器人 token（向 @BotFather 建立取得）；**等同機器人的密碼，不可進資料庫、前端或 repo** | GitHub Secrets / 本地 `.env` |
-| `TELEGRAM_CHAT_ID` | String | 接收告警的對話 ID（個人私訊；用 `scripts/get_telegram_chat_id.py` 查詢） | GitHub Secrets / 本地 `.env` |
+| `TELEGRAM_CHAT_ID` | String | 接收告警的對話 ID（個人私訊；用 `tools/get_telegram_chat_id.py` 查詢） | GitHub Secrets / 本地 `.env` |
 
 ### 4.2 前端 Streamlit 設定（Streamlit Community Cloud Secrets / 本地 `.streamlit/secrets.toml`）
 
@@ -414,7 +414,7 @@ REVOKE ALL ON public.alert_slot_settings FROM anon, authenticated;
 | 項目 | 設計 |
 |---|---|
 | 密碼表 | `private.admin_credential`（`id = 1` 單列、`password_hash`）。放在 `private` schema，**不對 API 開放**；RLS 不建 policy，並撤銷 `PUBLIC`／`anon`／`authenticated` 的所有權限 |
-| 雜湊 | **bcrypt**（`$2a$` 格式，cost 12，加鹽），由 `pgcrypto` 的 `crypt()` 比對。雜湊值由本機腳本 `scripts/make_admin_hash.py` 產生，密碼本身不會出現在資料庫工具的查詢紀錄或任何檔案 |
+| 雜湊 | **bcrypt**（`$2a$` 格式，cost 12，加鹽），由 `pgcrypto` 的 `crypt()` 比對。雜湊值由本機腳本 `tools/make_admin_hash.py` 產生，密碼本身不會出現在資料庫工具的查詢紀錄或任何檔案 |
 | 驗證函式 | `private.verify_admin(密碼)`：密碼錯誤、空值、NULL、尚未設定雜湊，**一律延遲 1 秒後拒絕**（錯誤訊息 `invalid_password`），讓連續猜測變慢；不做失敗次數鎖定，避免他人故意失敗把管理者鎖在外面 |
 | 讀取函式 | `admin_get_alert_settings(密碼)`：密碼正確才回傳兩張設定表的內容 |
 | 儲存函式 | `admin_save_alert_settings(密碼, 縣市設定, 時段設定)`：密碼正確才寫入；**只更新既有的縣市與時段，不能新增或刪除**；數值範圍由資料表 CHECK 把關；兩張表在同一個交易內更新，失敗全部回復 |
@@ -444,7 +444,7 @@ REVOKE ALL ON public.alert_slot_settings FROM anon, authenticated;
    - 單次 `upsert` 呼叫為單一資料庫交易（全部成功或全部失敗），前端不會讀到只寫入一半的批次。
    - 寫入成功後，以**同一個時間戳**更新 `pipeline_status`（見 §5.1）；執行失敗（含缺金鑰、HTTP 429）則記錄失敗狀態後照常以非 0 狀態碼結束。
 5. **條件判斷與 Telegram 推播**（縣市、條件與發送時段由資料庫設定，見 §5.1）：
-   - **只有排程（`schedule`）會推播**；手動更新與本機執行只更新資料、不推播。測試訊息格式可用 `scripts/test_notify.py`。
+   - **只有排程（`schedule`）會推播**；手動更新與本機執行只更新資料、不推播。測試訊息格式可用 `checks/check_notify.py`。
    - **預設不發送**：`alert_city_settings` 的縣市預設關閉；沒有啟用任何縣市時，日誌記錄「尚未啟用任何縣市，不發送告警」。
    - **發送時段（可選）**：僅在 `alert_slot_settings` 啟用的時段發送，可選 08:45、14:45、20:45（皆為 `cron` 排程時槽）。腳本把「現在」對齊到最近一個已經過去的排程時槽（`current_slot`），時槽不在啟用的發送時段就略過（資料照常更新）。以時槽而非實際執行時間判斷，排程被 GitHub 延遲不到一個間隔也不受影響。
    - **判斷條件（每個縣市各自設定）**：降雨機率 ≥ 門檻、最低溫 ≤ 門檻、最高溫 ≥ 門檻，三個條件各有開關與門檻，已啟用的條件任一符合即列入；欄位為 NULL 不判斷。
@@ -455,7 +455,7 @@ REVOKE ALL ON public.alert_slot_settings FROM anon, authenticated;
      - 只啟用單一時段時，視窗為隔天同一時間。
    - **重複出現屬預期**：進行中的時段會在相鄰兩次發送重複出現（如 06:00～18:00 在 08:45 與 14:45 都可能出現），這是「早、午、晚三次報告」的設計，不再有「每個時段只通知一次」的去重；一天最多 3 則。
    - **讀不到設定就不發送（fail closed）**：設定表不存在、連線失敗時略過推播並在日誌警告，資料照常更新、不視為失敗；不合法的縣市／時段列略過並警告。
-   - **推播管道為 Telegram**（`scripts/notifier.py`）：符合條件則組成純文字訊息 —— 標題「🔔 天氣告警」、副標題「涵蓋 MM/DD HH:MM～MM/DD HH:MM，共 N 筆符合條件」、每筆一行 `縣市 MM/DD HH:MM~HH:MM 進行中｜降雨 X%｜最低~最高°C`（值為 NULL 顯示「—」）—— 呼叫 `sendMessage` 傳給 `TELEGRAM_CHAT_ID`。
+   - **推播管道為 Telegram**（`src/tw_forecast/backend/notifier.py`）：符合條件則組成純文字訊息 —— 標題「🔔 天氣告警」、副標題「涵蓋 MM/DD HH:MM～MM/DD HH:MM，共 N 筆符合條件」、每筆一行 `縣市 MM/DD HH:MM~HH:MM 進行中｜降雨 X%｜最低~最高°C`（值為 NULL 顯示「—」）—— 呼叫 `sendMessage` 傳給 `TELEGRAM_CHAT_ID`。
    - **訊息格式**：以 HTML 模式送出（標題粗體），所有動態內容經過跳脫；Telegram 回 400（格式問題）時自動改用純文字重送一次。
    - **筆數與字數上限**：最多列 30 筆且總長不超過 4000 字，超過的部分以「另有 N 筆未列出」取代。
    - **⚠️ token 不可外洩**：`requests` 的例外訊息會帶完整網址（網址含 token），而失敗訊息會寫進 `pipeline_status.last_error`（前端可讀）。因此推播失敗一律改寫為不含網址的訊息（如「Telegram 回應 401：…」「無法連線至 Telegram（ConnectionError）」），且記錄失敗原因前會遮蔽所有機密環境變數的值。
@@ -479,7 +479,7 @@ name: Taiwan Weather Pipeline (Fetch -> Store)
 on:
   schedule:
     # 台灣時間 02:45 起每 3 小時 (UTC 的 00:45 / 03:45 / ... / 21:45)。
-    # ⚠️ fetch_and_store.py 的排程時槽 (SLOT_ANCHOR / SLOT_INTERVAL) 須與此處一致，修改時兩邊一起改。
+    # ⚠️ config.py 的排程時槽 (SLOT_ANCHOR / SLOT_INTERVAL) 須與此處一致，修改時兩邊一起改。
     - cron: '45 */3 * * *'
   workflow_dispatch:      # 支援隨時手動點擊執行
 
@@ -543,7 +543,7 @@ jobs:
    - **重點摘要**：篩選之後、地圖之前顯示 4 個指標。多縣市時為平均氣溫、最高溫、最低溫、最高降雨機率，其中最高溫、最低溫、最高降雨機率的標題列在指標名稱後接縣市名（如「最高溫　臺中市」），數值放在下一行；選定單一縣市時改為該縣市的平均氣溫、最高溫、最低溫、降雨機率，天氣現象（圖示與文字）顯示在平均氣溫數值（°C）的右側。欄位為 NULL 時顯示「—」。
    - 若沒有涵蓋此刻的時段（資料過期），以警示提醒「顯示的是最接近的時段」。
 3. **地區／縣市互斥下拉選單**（兩個下拉，整頁內容都跟著選擇更新）：
-   - 「地區」：`全部地區`、`北部地區`、`中部地區`、`南部地區`、`東部地區`、`離島地區`（澎湖、金門、連江不屬於四大分區，另列離島）；縣市對應分區由前端靜態對照表 (`streamlit_app/components/region_data.py`) 提供。
+   - 「地區」：`全部地區`、`北部地區`、`中部地區`、`南部地區`、`東部地區`、`離島地區`（澎湖、金門、連江不屬於四大分區，另列離島）；縣市對應分區由前端靜態對照表 (`src/tw_forecast/frontend/regions.py`) 提供。
    - 「縣市」：`全部縣市` 加上固定的 22 個縣市（依地區順序排列）。
    - **兩者互斥**：選「地區」時，縣市自動回到「全部縣市」；選「縣市」時，地區自動回到「全部地區」。因此選「全部地區」或「全部縣市」都等於回到全台檢視。以下拉的 `on_change` 回呼實作（程式改另一個下拉的值不會再觸發回呼）。
    - 依選擇決定顯示層級：**全台**（地區＝全部地區、縣市＝全部縣市）→ **地區**（選定地區、縣市＝全部縣市）→ **單一縣市**。單一縣市時，地圖與對照範圍使用**該縣市所屬的地區**。
@@ -608,10 +608,10 @@ jobs:
    - **密碼處理**：密碼只在本次連線的伺服器記憶體（`st.session_state`），不寫入日誌、不顯示；錯誤訊息一律遮蔽密碼；登入框使用 `clear_on_submit`。重新整理頁面即登出。
    - **閒置逾時**：超過 15 分鐘沒有操作，**下一次操作**（按按鈕或在視窗內操作）就會登出並要求重新登入（不做背景計時）。在主流程偵測到時立刻以 toast 提示；在設定視窗內偵測到（需關閉視窗）時，提示暫存到下一次整頁重跑後顯示，因為 `st.rerun()` 之前建立的 toast 會被丟掉。
    - **視窗行為（`st.dialog` 的特性）**：視窗內操作元件只重跑視窗本身，不會重新載入地圖、圖表或資料庫查詢；視窗內呼叫整頁 `st.rerun()` 會關閉視窗（登出、密碼失效時使用）；整頁重跑時視窗會消失（例如「立即更新」倒數 60 秒後的自動重整，屬少見情況）。
-   - 畫面內容在 `streamlit_app/components/admin_ui.py`（登入與設定兩個畫面、登入狀態管理），資料層在 `components/admin.py`；`app.py` 只負責標題列按鈕、兩個 `st.dialog` 外殼與開啟邏輯。本階段沒有新增任何 Streamlit Secrets（沿用 `anon` 金鑰）。
+   - 畫面內容在 `src/tw_forecast/frontend/admin_ui.py`（`AdminPanel`：登入與設定兩個畫面、登入狀態管理），資料層在 `frontend/admin.py`（`AlertSettingsService`）；`app.py` 只負責標題列按鈕、兩個 `st.dialog` 外殼與開啟邏輯。本階段沒有新增任何 Streamlit Secrets（沿用 `anon` 金鑰）。
 9. **玻璃擬態外觀（淺色／深色）**：
    - **主題**：`.streamlit/config.toml` 以 `[theme.light]`（淡米白 `#F7F5F0`；頁面背景另由 `style.py` 畫成由左 `#F7F5F0` 到右 `#EAF3F8` 淡天空藍的線性漸層）與 `[theme.dark]`（深藍灰 `#12141C`）各設底色、文字色、主色。使用者在頁面右上角「⋮」→ Settings 選 Light / Dark / Use system setting；跟隨系統時依系統決定。Streamlit 只讀「執行目錄」的設定檔：Community Cloud 從 repo 根目錄執行、本機從 `forecast/` 執行，故根目錄與 `forecast/.streamlit/` 各放一份，**內容須相同**。
-   - **樣式**：`components/style.py` 在頁面開頭注入一次 CSS。淺色／深色用 CSS `light-dark()` 寫在同一份，Streamlit 會依目前主題設定 `.stApp` 的 `color-scheme`，切換主題時立即生效、不需重跑頁面。顏色與模糊程度集中為 CSS 變數（`--glass-bg`、`--glass-border`、`--glass-shadow`、`--glass-blur`、`--glow-1～3`）。
+   - **樣式**：`frontend/style.py` 在頁面開頭注入一次 CSS。淺色／深色用 CSS `light-dark()` 寫在同一份，Streamlit 會依目前主題設定 `.stApp` 的 `color-scheme`，切換主題時立即生效、不需重跑頁面。顏色與模糊程度集中為 CSS 變數（`--glass-bg`、`--glass-border`、`--glass-shadow`、`--glass-blur`、`--glow-1～3`）。
    - **套用範圍**：背景在淺色為左右線性漸層（淡米白 → 淡天空藍），深色為深藍灰底加三個彩色光暈（玻璃需要背後有色彩變化才看得出模糊）；重點摘要 4 張卡片為玻璃卡片（降雨機率同樣用卡片，外觀一致）；兩個告警視窗背後頁面模糊，視窗加圓角、細邊框與陰影，視窗底色沿用主題（內部表格不透明，做成半透明會難讀）；地圖圖例與提示框見第 6 點。
    - **不套用**：原生元件（下拉、單選、按鈕）與明細表格內部（畫布不透明）維持主題原樣。
    - **已知限制**：深色主題下地圖底圖仍是淺色圖磚（OpenStreetMap）；使用的 Streamlit 內部選擇器（`.stApp`、`.stDialog`）在升級版本時須重新檢查外觀。
@@ -678,27 +678,52 @@ HW1/                                     # repo 根目錄
 │   └── config.toml                      # 淺色／深色主題（Streamlit Cloud 從根目錄執行，讀這一份）
 ├── requirements.txt                     # 相依套件清單（須在根目錄，供 Streamlit Cloud 偵測）
 └── forecast/                            # 專案程式碼與文件
+    ├── src/tw_forecast/                 # 正式程式碼（前後端共用一個套件；OOP + 模組化，每個模組開頭有輸入／輸出說明）
+    │   ├── config.py                    # 共用常數：時區、資料集、排程時槽（須與 workflow cron 一致）、資料表名、發送時段
+    │   ├── backend/                     # 流程一（GitHub Actions 執行）
+    │   │   ├── cli.py                   # 命令列入口：組裝 Pipeline（--dry-run / --from-sample）、執行來源判斷、失敗記錄
+    │   │   ├── pipeline.py              # Pipeline：取得預報 → 解析 → 寫入 → 告警判斷 → 推播（相依皆由外部注入）
+    │   │   ├── cwa_client.py            # CwaClient：打氣象署 API（重試、429 中止）
+    │   │   ├── parser.py                # ForecastParser：巢狀 JSON → 平面列
+    │   │   ├── slots.py                 # 排程時槽計算（純函式）
+    │   │   ├── alerts.py                # 告警規則（設定解析、判斷視窗、條件命中；純函式，不連網）
+    │   │   ├── notifier.py              # TelegramNotifier（訊息組合、跳脫、400 重送、token 不外洩）
+    │   │   ├── repository.py            # ForecastRepository / StatusRepository / AlertSettingsRepository（寫入與讀取資料庫）
+    │   │   ├── security.py              # 機密遮蔽
+    │   │   └── errors.py                # AbortRun、NotifyError
+    │   └── frontend/                    # 流程二（Streamlit 儀表板）
+    │       ├── repository.py            # ForecastQuery：Supabase 唯讀查詢（不快取；即時只取最新批次；日期查詢）
+    │       ├── session.py               # secrets、Supabase 連線（st.cache_resource）
+    │       ├── scope.py                 # Scope：地區／縣市篩選範圍、依範圍整理資料與圖表長表
+    │       ├── tables.py                # 明細表格與「後續時段」的資料整理
+    │       ├── charts.py                # SeriesChart：氣溫／降雨機率趨勢圖（monotone 曲線；單一縣市三條線合併）
+    │       ├── map_view.py              # TemperatureMap：Folium 地圖（標記顯示溫度、雙指手勢、可標出被選縣市）
+    │       ├── temperature.py           # 氣溫級距與顏色
+    │       ├── regions.py               # 縣市 → 分區 (北/中/南/東/離島) 對照表
+    │       ├── formatting.py            # 顯示小工具（天氣 emoji、日夜判斷、時間文字）
+    │       ├── update_gate.py           # 「立即更新」的間隔判斷
+    │       ├── github_dispatch.py       # WorkflowDispatcher：觸發後端 workflow
+    │       ├── admin.py                 # 告警設定的資料層（AlertSettingsService、驗證、密碼遮蔽）
+    │       ├── admin_ui.py              # AdminPanel：告警設定視窗內容與登入狀態管理
+    │       ├── style.py                 # 玻璃擬態 CSS（淺色／深色）與摘要卡片 HTML
+    │       └── views/                   # 頁面各區塊：header、filters、summary、map_section、tabs（trends／tables_view／date_query）、admin_dialogs
     ├── scripts/
-    │   ├── fetch_and_store.py           # 🌟 流程一：Python 打 API 取資料存 DB & 告警推播（支援 --dry-run / --from-sample）
+    │   └── fetch_and_store.py           # 🌟 流程一入口（Actions 執行；只呼叫 backend.cli.main，支援 --dry-run / --from-sample）
+    ├── streamlit_app/
+    │   └── app.py                       # 🌟 流程二入口（Streamlit Cloud 的 Main file；只負責依序串接 frontend 各區塊）
+    ├── tests/                           # 單元與整頁測試（pytest；不連網、不連資料庫，也不依賴 samples/）
+    │   ├── fakes.py                     # 假 Supabase、假 API 回應與假預報資料
+    │   ├── backend/                     # 解析、時槽、告警規則、推播、API 客戶端、Pipeline、Repository、CLI
+    │   └── frontend/                    # 純函式、Scope／表格、查詢、圖表與地圖、告警設定資料層、GitHub 觸發、整頁煙霧測試（AppTest）
+    ├── checks/                          # 需要真實連線的檢查（手動執行，不屬於自動測試）
     │   ├── check_cwa_api.py             # 驗證 CWA API 並存下範例回應到 samples/
     │   ├── check_rls.py                 # 驗證 RLS：anon 可讀不可寫、service_role 可寫
-    │   ├── alert_rules.py               # 告警規則（讀取設定後判斷：發送時段、視窗、條件；純函式）
-    │   ├── make_admin_hash.py           # 本機產生管理者密碼的 bcrypt 雜湊（只在本機使用，需 pip install bcrypt）
     │   ├── check_admin_rpc.py           # 驗證管理者設定功能：錯誤密碼被擋、登入、儲存、設定未被改動
-    │   ├── notifier.py                  # Telegram 推播（訊息組合、跳脫、400 重送、token 不外洩）
-    │   ├── get_telegram_chat_id.py      # 查詢 TELEGRAM_CHAT_ID（token 只讀本機 .env）
-    │   └── test_notify.py               # 傳範例告警到 Telegram，確認推播設定與格式
-    ├── streamlit_app/
-    │   ├── app.py                       # 🌟 流程二：讀取 Supabase 渲染 Streamlit 儀表板
-    │   └── components/
-    │       ├── db.py                    # Supabase 唯讀查詢（不快取；即時只取最新批次；日期查詢的可選日期與指定日期資料）
-    │       ├── admin.py                 # 告警設定的資料層（呼叫資料庫函式、驗證、密碼遮蔽）
-    │       ├── admin_ui.py              # 告警設定視窗的內容（登入視窗、設定視窗、登入狀態管理）
-    │       ├── region_data.py           # 縣市 → 分區 (北/中/南/東/離島) 靜態對照表
-    │       ├── map_view.py              # Folium 地圖視覺化（標記顯示溫度、關閉滾輪縮放、可標出被選縣市）
-    │       ├── charts.py                # 氣溫／降雨機率趨勢圖（多系列折線，單一縣市為一條線）
-    │       ├── style.py                 # 玻璃擬態 CSS（淺色／深色）與摘要卡片 HTML
-    │       └── format.py                # 顯示小工具（天氣現象 emoji）
+    │   └── check_notify.py              # 傳範例告警到 Telegram，確認推播設定與格式
+    ├── tools/                           # 維運小工具
+    │   ├── make_admin_hash.py           # 本機產生管理者密碼的 bcrypt 雜湊（只在本機使用，需 pip install bcrypt）
+    │   └── get_telegram_chat_id.py      # 查詢 TELEGRAM_CHAT_ID（token 只讀本機 .env）
+    ├── pytest.ini                       # pythonpath = src tests
     ├── .streamlit/
     │   ├── config.toml                  # 淺色／深色主題（與根目錄 .streamlit/config.toml 內容相同，本機執行用）
     │   └── secrets.toml.example         # 前端 Secrets 範本 (實際 secrets.toml 不得 commit)
@@ -742,6 +767,7 @@ HW1/                                     # repo 根目錄
 - 將 workflow 的 `actions/checkout`、`actions/setup-python` 升級，消除 Node.js 20 deprecated 警告。
 
 ### 10.3 版本紀錄
+- **v1.12.0**：程式碼重構（行為不變）：正式程式碼移到 `src/tw_forecast/`（`backend/`、`frontend/`、共用 `config.py`），依職責拆成 OOP 類別與純函式（`CwaClient`、`ForecastParser`、`Pipeline`、`TelegramNotifier`、`ForecastQuery`、`Scope`、`SeriesChart`、`TemperatureMap`、`AdminPanel` 等），每個模組開頭說明輸入／處理／輸出；`app.py` 拆成 `frontend/views/` 各區塊，只負責串接；`scripts/` 只留 `fetch_and_store.py` 入口（Actions 指令不變）。測試與正式程式分離：`tests/`（pytest，183 項，不連網、不連資料庫）、`checks/`（需真實連線的手動檢查）、`tools/`（維運小工具）。重構前後以相同輸入比對：後端輸出（解析列、時槽、告警、訊息文字）與前端 6 種操作狀態下的畫面輸出（文字、表格、圖表規格、地圖 HTML）完全一致。
 - **v1.11.0**：手機版（寬度 ≤ 640px）標題列的「立即更新」「重新載入資料」「告警設定」收進「☰ 選單」，點開才顯示；電腦版維持並排三顆按鈕。摘要卡片在手機上上下堆疊時，卡片底部加 12px 間隔。
 - **v1.10.0**：新增「📅 日期查詢」分頁：下拉選擇資料庫有資料的日期（今天前 3 天到後 7 天），範圍跟著地區／縣市選擇，只以表格（欄位同「後續時段」）呈現被選當天的預報存檔，不含折線圖；`db.py` 新增 `fetch_available_dates`、`fetch_day`（只取完整 12 小時時段，排除被縮短的時段）。
 - **v1.9.0**：玻璃擬態外觀（淺色／深色兩組主題，`config.toml` 的 `[theme.light]`／`[theme.dark]` 加 `components/style.py` 的 CSS）：漸層光暈背景、摘要玻璃卡片、告警視窗模糊背景與圓角邊框、地圖圖例與提示框淺色玻璃；溫度文字色改為中等明度以兼顧淺色與深色底；降雨機率摘要改為與溫度相同的卡片。
