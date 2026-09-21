@@ -23,10 +23,10 @@ jobs:
         working-directory: forecast   # repo 根目錄為 HW1/，專案程式碼在 forecast/
     steps:
       - name: 檢出專案程式碼
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: 安裝 Python 環境
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: '3.11'
           cache: 'pip'
