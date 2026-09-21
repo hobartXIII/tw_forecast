@@ -316,11 +316,12 @@ def show_table(table: pd.DataFrame, drop: list[str]) -> None:
 
 
 if city:
-    tab_temp, tab_rain, tab_table = st.tabs(["📈 氣溫趨勢", "🌧️ 降雨機率", "📋 一週預報"])
+    tab_temp, tab_rain, tab_table, tab_date = st.tabs(
+        ["📈 氣溫趨勢", "🌧️ 降雨機率", "📋 一週預報", "📅 日期查詢"])
     tab_next = None
 else:  # 全台／地區：明細右邊多一個「後續時段」分頁
-    tab_temp, tab_rain, tab_table, tab_next = st.tabs(
-        ["📈 氣溫趨勢", "🌧️ 降雨機率", "📋 目前時段明細", "🕒 後續時段"])
+    tab_temp, tab_rain, tab_table, tab_next, tab_date = st.tabs(
+        ["📈 氣溫趨勢", "🌧️ 降雨機率", "📋 目前時段明細", "🕒 後續時段", "📅 日期查詢"])
 
 with tab_temp:
     if fc is None:
@@ -364,4 +365,34 @@ if tab_next is not None:
             st.info("沒有後續時段的預報資料（資料可能已過期），請按「立即更新」。")
         else:
             show_table(make_table(later, dated=True), ["地區"] if region != ALL_REGIONS else [])
+
+with tab_date:  # 選一天，只列該天的表格（範圍跟著上方的地區／縣市）；沒有折線圖
+    try:
+        dates = db.fetch_available_dates(sb, now, CITY_ORDER[0])
+    except Exception as exc:
+        dates = []
+        st.error(f"讀取可選日期失敗：{exc}")
+    if not dates:
+        st.info("資料庫沒有可查詢的日期。")
+    else:
+        weekday = "一二三四五六日"
+        picked = st.selectbox(
+            "日期（今天前 3 天到後 7 天內、資料庫有資料的日期）", dates, index=None, placeholder="請選擇日期",
+            format_func=lambda d: f"{d:%Y-%m-%d}（週{weekday[d.weekday()]}）" + ("　今天" if d == now.date() else ""),
+            key="query_date")
+        if picked is not None:
+            try:
+                day = db.fetch_day(sb, picked, scope_cities)
+            except Exception as exc:
+                day = None
+                st.error(f"讀取 {picked:%Y-%m-%d} 的資料失敗：{exc}")
+            if day is not None and day.empty:
+                st.info(f"{picked:%Y-%m-%d} 在此範圍沒有資料。")
+            elif day is not None:
+                st.caption(f"{scope_label}｜{picked:%Y-%m-%d} 的預報存檔（僅含完整 12 小時時段，不含被縮短的時段；預報值，非實測值；"
+                           "夜間時段以起點日期歸屬）")
+                day = add_region(day)
+                day = day.assign(avg=display_temp(day)).sort_values(["order", "forecast_time_start"])
+                drop = ["縣市", "地區"] if city else (["地區"] if region != ALL_REGIONS else [])
+                show_table(make_table(day, dated=True), drop)
 

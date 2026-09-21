@@ -2,7 +2,7 @@
 
 查詢結果一律不快取（見 SPECIFICATION.md §8.1）；只重用連線物件。
 """
-from datetime import datetime
+from datetime import date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 import pandas as pd
@@ -82,3 +82,50 @@ def fetch_update_status(sb: Client) -> list[dict]:
         for col in ("last_success_at", "last_run_at"):
             row[col] = pd.to_datetime(row[col], utc=True).tz_convert(TZ) if row.get(col) else None
     return rows
+
+
+def _day_start(day: date) -> datetime:
+    return datetime.combine(day, time.min, TZ)
+
+
+FULL_PERIOD = pd.Timedelta(hours=12)
+
+
+def _only_full_periods(df: pd.DataFrame) -> pd.DataFrame:
+    """只留完整的 12 小時時段（06:00~18:00、18:00~隔天 06:00）。
+
+    氣象署的第一個時段會隨時間被縮短（如 06:00~18:00 → 12:00~18:00），縮短後是不同主鍵的另一列，
+    日期查詢不提供這些被縮短的資料；完整時段的那一列是縮短之前寫入的，不會被覆蓋。
+    """
+    return df[(df["forecast_time_end"] - df["forecast_time_start"]) == FULL_PERIOD]
+
+
+def fetch_available_dates(sb: Client, now: datetime, probe_city: str,
+                          back: int = 3, ahead: int = 7) -> list[date]:
+    """日期查詢的可選日期：今天前 back 天到後 ahead 天之間，資料庫裡有完整 12 小時時段的日期（台灣日期，由小到大）。
+
+    所有縣市在同一批寫入，所以只查一個縣市（probe_city）就能得到日期清單，筆數約 30 而不是數百。
+    夜間時段（18:00～隔天 06:00）以「起點」的日期歸屬。
+    """
+    lo, hi = _day_start(now.date() - timedelta(days=back)), _day_start(now.date() + timedelta(days=ahead + 1))
+    rows = (sb.table(TABLE).select("forecast_time_start,forecast_time_end").eq("location_name", probe_city)
+            .gte("forecast_time_start", lo.isoformat()).lt("forecast_time_start", hi.isoformat())
+            .limit(MAX_ROWS).execute().data)
+    df = _to_df(rows)
+    if df.empty:
+        return []
+    return sorted({s.date() for s in _only_full_periods(df)["forecast_time_start"]})
+
+
+def fetch_day(sb: Client, day: date, cities: list[str]) -> pd.DataFrame:
+    """指定日期（起點落在該台灣日期）、指定縣市的完整 12 小時時段，約 22 縣市 × 2 個時段。
+
+    完整時段的主鍵（縣市、起、迄）唯一，不會有重複列，所以不需要另外去重，也不能用 _latest_batch
+    （歷史列的 updated_at 不是全表最大值）。
+    """
+    lo = _day_start(day)
+    rows = (sb.table(TABLE).select("*").in_("location_name", cities)
+            .gte("forecast_time_start", lo.isoformat()).lt("forecast_time_start", (lo + timedelta(days=1)).isoformat())
+            .limit(MAX_ROWS).execute().data)
+    df = _to_df(rows)
+    return df if df.empty else _only_full_periods(df).reset_index(drop=True)
