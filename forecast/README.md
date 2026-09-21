@@ -11,7 +11,13 @@
 
 - **後端**：GitHub Actions 於台灣時間 02:45 起每 3 小時（02:45、05:45、08:45……）自動執行，也可手動觸發；抓取預報、清洗後 upsert 至 Supabase，記錄 `updated_at`，並把最後成功更新時間寫入 `pipeline_status`。
 - **告警**：只有排程會推播 Telegram，且只在你啟用的發送時段（08:45、14:45、20:45）發送；**預設所有縣市關閉（不發送）**。每個縣市可各自設定降雨／低溫／高溫三個條件的開關與門檻（預設 60％／12°C／35°C）。手動更新只更新資料、不推播。設定存在資料庫，`anon` 讀不到也寫不了；可用儀表板標題列的「⚙️ 告警設定」按鈕（輸入管理者密碼後在視窗中調整），也可以用 Supabase SQL Editor（見下方「啟用告警」）。
-- **前端**：地區／縣市互斥篩選（選其一會清除另一個）；重點摘要；Folium 地圖（標記顯示溫度，手機雙指才操作地圖、單指滑動捲動頁面，電腦按 Ctrl 才縮放，另有 ＋／－ 按鈕）；氣溫與降雨機率趨勢圖（全台依地區、地區依縣市各一種顏色，氣象署未提供的降雨機率補 0 並以空心點標示）；明細表格與「後續時段」（每縣市目前時段之後 2 個時段）；天氣圖示區分日夜；「立即更新」按鈕：距上次成功更新（排程或手動，以 `pipeline_status` 為準）滿 20 分鐘才可按，觸發後 60 秒自動重整頁面；排程不受此限制。
+- **前端**：
+  - **篩選**：地區／縣市互斥（選其一會清除另一個；選了縣市時地區選單顯示「— 已選縣市 —」，再點「全部地區」即回到全台）。
+  - **摘要與地圖**：重點摘要卡片；Folium 地圖（標記顯示溫度，手機雙指才操作地圖、單指滑動捲動頁面，電腦按 Ctrl 才縮放，另有 ＋／－ 按鈕）。溫度數字依級距上色。
+  - **趨勢圖**（柔和的曲線折線圖）：全台依地區、地區依縣市各一種顏色，可用單選鈕切換最高／最低／平均溫；**單一縣市則把最高、平均、最低三條線畫在同一張圖**。降雨機率圖標示 60% 門檻，氣象署未提供的時段補 0 並以空心點標示。
+  - **表格**：目前時段明細、後續時段（每縣市目前時段之後 2 個時段）、單一縣市的一週預報，以及「日期查詢」（選一天看當天完整 12 小時時段）；天氣圖示區分日夜。
+  - **外觀**：玻璃擬態，淺色／深色自動跟隨主題；手機版標題列按鈕收進「☰ 選單」。
+  - **「立即更新」**：距上次成功更新（排程或手動，以 `pipeline_status` 為準）滿 20 分鐘才可按；觸發後 60 秒自動重整頁面，且觸發後 5 分鐘內資料庫尚無新的成功紀錄時維持停用（按 F5 或別人開頁面也不會重新開放）；排程不受此限制。
 
 ## 目錄結構
 
@@ -19,9 +25,12 @@
 
 ```text
 HW1/
+├── .devcontainer/devcontainer.json        # GitHub Codespaces／Dev Container 開發環境（自動啟動 Streamlit）
 ├── .github/workflows/weather_worker.yml   # 排程與手動觸發流程一
 ├── .gitignore
+├── CLAUDE.md                              # 給 Claude Code 的專案指示（Streamlit 慣例與本專案開發流程）
 ├── requirements.txt                       # 須在根目錄，Streamlit Cloud 才偵測得到
+├── requirements-dev.txt                   # 開發用（pytest），部署不需要
 └── forecast/
     ├── src/tw_forecast/ # 正式程式碼：backend/（流程一）、frontend/（流程二）、config.py
     ├── scripts/         # fetch_and_store.py（流程一入口，Actions 執行）
@@ -31,6 +40,7 @@ HW1/
     ├── sql/             # init_supabase.sql（weather_forecasts、pipeline_status、RLS、updated_at、時區）
     ├── streamlit_app/   # app.py（流程二入口）
     ├── .streamlit/      # secrets.toml.example
+    ├── ARCHITECTURE.md  # 每個檔案的功能、資料流與「想改某功能該看哪裡」
     ├── SPECIFICATION.md
     └── README.md
 ```
@@ -107,10 +117,10 @@ python -m pytest                          # 在 forecast/ 執行；不連網、�
 | :--- | :--- |
 | 啟用了縣市卻收不到告警 | 依序確認：① 已在 Supabase 執行新版 `init_supabase.sql`；② 該縣市 `enabled = true`；③ 目前排程時槽在啟用的發送時段（08:45／14:45／20:45）；④ 條件有符合（可暫時把降雨門檻設為 0 測試）；⑤ GitHub Secrets 有 `TELEGRAM_BOT_TOKEN`、`TELEGRAM_CHAT_ID`。日誌會寫明略過的原因。 |
 | 「⚙️ 告警設定」登入時顯示「設定功能尚未啟用」 | 資料庫函式不存在：請在 Supabase 執行新版 `sql/init_supabase.sql`。若顯示「密碼錯誤」但確定密碼正確，代表還沒寫入雜湊值（README 上方第 7 步的第 3 點）。 |
-| 「立即更新」按鈕是灰的 | 距上次成功更新不滿 20 分鐘（畫面會顯示還需等幾分鐘），或讀不到 `pipeline_status`（未執行新的 SQL、資料庫連線問題）而一律不放行。排程不受影響。 |
+| 「立即更新」按鈕是灰的 | ① 距上次成功更新不滿 20 分鐘（畫面會顯示還需等幾分鐘）；② 剛觸發過更新，正在等待完成（最多 5 分鐘，畫面顯示「已觸發更新，正在等待完成」）；③ 讀不到 `pipeline_status`（未執行新的 SQL、資料庫連線問題）而一律不放行。排程不受影響。 |
 | `ModuleNotFoundError: streamlit_folium` | Streamlit Cloud 找不到 `requirements.txt`。它只找主程式所在目錄與 repo 根目錄，須放在根目錄。 |
 | 「尚未設定 SUPABASE_URL / SUPABASE_ANON_KEY」 | 雲端要在 Secrets 設定；本機要建立 `.streamlit/secrets.toml`（不會被 commit）。 |
 | 儀表板縣市數是 44 而不是 22 | 資料表裡有新舊兩批時段重疊的資料（氣象署第一個時段會隨時間縮短）。前端只取最新一批，因此需要 workflow 至少成功寫入一次帶 `updated_at` 的資料。 |
 | `updated_at` 顯示 UTC | 於 Supabase 執行 `sql/init_supabase.sql`（含 `ALTER DATABASE ... SET timezone`），並用新的連線／SQL 分頁查詢。 |
-| 本機 `ImportError`（改了程式卻沒生效） | 長時間執行的 Streamlit 會快取舊模組，重啟 `streamlit run` 即可。 |
+| `ImportError`（改了程式卻沒生效） | 長時間執行的 Streamlit 可能沿用舊模組，尤其一次改動多個檔案時。本機重啟 `streamlit run`；雲端到 Manage app 選 Reboot app。 |
 | Actions 出現 Node.js 20 deprecated 警告 | 只是提醒 `checkout@v4`、`setup-python@v5` 之後會改用 Node 24，不影響執行。 |
