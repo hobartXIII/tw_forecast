@@ -27,9 +27,18 @@ def temp_color(temp: float) -> str:
     return BANDS[_band(temp)][0]
 
 
+# 文字用的級距色：中等明度，在淺色與深色主題的底色上對比都約 3:1 以上（標記底色用上面的 BANDS，較亮）
+TEXT_COLORS = ["#0b8ba0", "#2b8a3e", "#cc6a00", "#e03131"]
+
+# 地圖底圖（OpenStreetMap）不論主題都是淺色，圖例與提示框固定用淺色玻璃
+GLASS_LIGHT = ("background:rgba(255,255,255,.72);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);"
+               "border:1px solid rgba(255,255,255,.85);border-radius:12px;box-shadow:0 6px 20px rgba(60,50,30,.22);"
+               "color:#222")
+
+
 def text_color(value) -> str:
     """文字用的級距色；NULL 回傳空字串（沿用預設文字色）。"""
-    return "" if pd.isna(value) else temp_color(value)
+    return "" if pd.isna(value) else TEXT_COLORS[_band(value)]
 
 
 def colored(value, text: str) -> str:
@@ -92,7 +101,7 @@ def build_map(df: pd.DataFrame, fit: bool = False, highlight: str | None = None)
         folium.Marker(
             [row["latitude"], row["longitude"]],
             icon=folium.DivIcon(html=_marker_html(temp, state), icon_size=(half * 2, half * 2), icon_anchor=(half, half)),
-            tooltip=folium.Tooltip(tip),
+            tooltip=folium.Tooltip(tip, style=GLASS_LIGHT + ";padding:8px 12px"),
             z_index_offset=1000 if state == "selected" else 0,
         ).add_to(m)
         points.append([row["latitude"], row["longitude"]])
@@ -102,7 +111,7 @@ def build_map(df: pd.DataFrame, fit: bool = False, highlight: str | None = None)
     legend = "".join(f'<div><span style="background:{c};display:inline-block;width:12px;height:12px;'
                      f'border-radius:50%;margin-right:6px"></span>{label}</div>' for c, label in BANDS)
     m.get_root().html.add_child(folium.Element(
-        '<div style="position:fixed;bottom:24px;left:24px;z-index:9999;background:#fff;padding:8px 12px;'
-        'border-radius:6px;box-shadow:0 1px 4px rgba(0,0,0,.3);font-size:12px;color:#222">'
+        f'<div style="position:fixed;bottom:24px;left:24px;z-index:9999;{GLASS_LIGHT};padding:8px 12px;'
+        'font-size:12px">'
         f'<b>平均氣溫</b>{legend}</div>'))
     return m

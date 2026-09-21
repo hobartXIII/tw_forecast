@@ -1,0 +1,16 @@
+# 淺色／深色主題各一組；使用者在右上角「⋮」→ Settings 選 Light / Dark / Use system setting。
+# 玻璃卡片、漸層背景等在 forecast/streamlit_app/components/style.py。
+# Streamlit 只讀「執行目錄」的 .streamlit/config.toml：Community Cloud 從 repo 根目錄執行，
+# 本機從 forecast/ 執行，所以這份設定在兩處各放一份（內容須相同）。
+
+[theme.light]
+primaryColor = "#d9480f"
+backgroundColor = "#FBF7F0"           # 暖白／象牙白
+secondaryBackgroundColor = "#F3ECE0"
+textColor = "#2B2620"
+
+[theme.dark]
+primaryColor = "#ff8a5c"
+backgroundColor = "#12141C"
+secondaryBackgroundColor = "#1B1F2B"
+textColor = "#ECEFF4"

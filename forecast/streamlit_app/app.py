@@ -14,6 +14,7 @@ from components.charts import RAIN_ALERT, series_chart
 from components.format import is_night, weather_icon
 from components.map_view import build_map, colored, display_temp, text_color
 from components.region_data import ALL_REGIONS, CITY_ORDER, REGIONS, cities_in, region_of
+from components.style import card, inject
 from components.update_gate import MIN_INTERVAL_MINUTES, evaluate
 
 ALL_CITIES = "全部縣市"
@@ -23,6 +24,7 @@ WORKFLOW_FILE = "weather_worker.yml"
 REFRESH_AFTER_SECONDS = 60  # 觸發更新後，等這麼久自動重整頁面
 
 st.set_page_config(page_title="台灣天氣預報", page_icon="🌤️", layout="wide")
+inject()  # 玻璃擬態樣式（淺色／深色）
 
 
 def secret(name: str) -> str | None:
@@ -220,12 +222,13 @@ def show(value, unit: str, fmt: str = ".0f") -> str:
 
 
 def temp_metric(col, label: str, value, fmt: str = ".0f", sub: str = "") -> None:
-    """外觀比照 st.metric，但數字依溫度級距上色（st.metric 的數值無法指定顏色）。"""
-    sub_html = f'<div style="font-size:14px;opacity:.7;margin-top:2px">{sub}</div>' if sub else ""
-    col.markdown(
-        f'<div style="font-size:14px;opacity:.7">{label}</div>'
-        f'<div style="font-size:36px;font-weight:600;line-height:1.3">{colored(value, show(value, "°C", fmt))}</div>'
-        f"{sub_html}", unsafe_allow_html=True)
+    """玻璃卡片，數字依溫度級距上色（st.metric 的數值無法指定顏色）。"""
+    col.markdown(card(label, colored(value, show(value, "°C", fmt)), sub), unsafe_allow_html=True)
+
+
+def plain_metric(col, label: str, value: str, sub: str = "") -> None:
+    """與 temp_metric 同外觀的玻璃卡片，數字不上色（降雨機率）。"""
+    col.markdown(card(label, value, sub), unsafe_allow_html=True)
 
 
 k1, k2, k3, k4 = st.columns(4)
@@ -235,7 +238,7 @@ if city:  # 單一縣市：直接呈現該縣市自己的數值，天氣現象�
     temp_metric(k1, f"{city} 平均氣溫", crow["avg"], ".1f", f"{icon} {weather}".strip())
     temp_metric(k2, "最高溫", crow["max_temp"])
     temp_metric(k3, "最低溫", crow["min_temp"])
-    k4.metric("降雨機率", show(crow["rain_probability"], "%"))
+    plain_metric(k4, "降雨機率", show(crow["rain_probability"], "%"))
 else:
     hot, hot_city = extreme("max_temp", True)
     cold, cold_city = extreme("min_temp", False)
@@ -243,7 +246,7 @@ else:
     temp_metric(k1, "平均氣溫", cur["avg"].mean(), ".1f")
     temp_metric(k2, "最高溫", hot, sub=hot_city)
     temp_metric(k3, "最低溫", cold, sub=cold_city)
-    k4.metric("最高降雨機率", show(wet, "%"), wet_city, delta_color="off")
+    plain_metric(k4, "最高降雨機率", show(wet, "%"), wet_city)
 
 # ---------- 地圖 ----------
 st.subheader("🗺️ 平均氣溫地圖")

@@ -586,7 +586,8 @@ jobs:
      - `20 ~ 25°C`: 綠色
      - `25 ~ 30°C`: 橙黃色（含 30）
      - `> 30°C`: 鮮紅色
-   - 底圖使用 OpenStreetMap（CartoDB 底圖需要 API key）。
+   - 底圖使用 OpenStreetMap（CartoDB 底圖需要 API key）。底圖不論主題都是淺色，圖例與滑鼠提示框固定用淺色玻璃（半透明白＋模糊）。
+   - 文字上的溫度級距色與標記填色分開：標記底色用上面較亮的色階；文字色改用中等明度（`#0b8ba0`／`#2b8a3e`／`#cc6a00`／`#e03131`），在淺色與深色底上對比都約 3:1 以上（橙黃 `#f59f00` 在暖白上僅 2.0:1，不適合當文字色）。
 7. **「立即更新」按鈕**：
    - **判斷依據**：**一律**以資料庫 `pipeline_status` 表（§5.1）的最後成功更新時間為準（排程與手動兩列取較新者），與使用者人數、瀏覽器狀態無關。距上次成功更新**不滿 20 分鐘**不可手動更新，按鈕停用並顯示「距上次更新僅 X 分鐘…請約 Y 分鐘後再試」；排程不受此限制。
    - **流程**：每次頁面執行（含按下按鈕的那一次）開頭都重新讀取 `pipeline_status`，通過才呼叫 GitHub 觸發更新；判斷在 Streamlit 伺服器端執行，`GH_DISPATCH_TOKEN` 不會到瀏覽器。
@@ -608,6 +609,12 @@ jobs:
    - **閒置逾時**：超過 15 分鐘沒有操作，**下一次操作**（按按鈕或在視窗內操作）就會登出並要求重新登入（不做背景計時）。在主流程偵測到時立刻以 toast 提示；在設定視窗內偵測到（需關閉視窗）時，提示暫存到下一次整頁重跑後顯示，因為 `st.rerun()` 之前建立的 toast 會被丟掉。
    - **視窗行為（`st.dialog` 的特性）**：視窗內操作元件只重跑視窗本身，不會重新載入地圖、圖表或資料庫查詢；視窗內呼叫整頁 `st.rerun()` 會關閉視窗（登出、密碼失效時使用）；整頁重跑時視窗會消失（例如「立即更新」倒數 60 秒後的自動重整，屬少見情況）。
    - 畫面內容在 `streamlit_app/components/admin_ui.py`（登入與設定兩個畫面、登入狀態管理），資料層在 `components/admin.py`；`app.py` 只負責標題列按鈕、兩個 `st.dialog` 外殼與開啟邏輯。本階段沒有新增任何 Streamlit Secrets（沿用 `anon` 金鑰）。
+9. **玻璃擬態外觀（淺色／深色）**：
+   - **主題**：`.streamlit/config.toml` 以 `[theme.light]`（暖白 `#FBF7F0`）與 `[theme.dark]`（深藍灰 `#12141C`）各設底色、文字色、主色。使用者在頁面右上角「⋮」→ Settings 選 Light / Dark / Use system setting；跟隨系統時依系統決定。Streamlit 只讀「執行目錄」的設定檔：Community Cloud 從 repo 根目錄執行、本機從 `forecast/` 執行，故根目錄與 `forecast/.streamlit/` 各放一份，**內容須相同**。
+   - **樣式**：`components/style.py` 在頁面開頭注入一次 CSS。淺色／深色用 CSS `light-dark()` 寫在同一份，Streamlit 會依目前主題設定 `.stApp` 的 `color-scheme`，切換主題時立即生效、不需重跑頁面。顏色與模糊程度集中為 CSS 變數（`--glass-bg`、`--glass-border`、`--glass-shadow`、`--glass-blur`、`--glow-1～3`）。
+   - **套用範圍**：背景為柔和的漸層光暈（玻璃需要背後有色彩變化才看得出模糊）；重點摘要 4 張卡片為玻璃卡片（降雨機率同樣用卡片，外觀一致）；兩個告警視窗背後頁面模糊，視窗加圓角、細邊框與陰影，視窗底色沿用主題（內部表格不透明，做成半透明會難讀）；地圖圖例與提示框見第 6 點。
+   - **不套用**：原生元件（下拉、單選、按鈕）與明細表格內部（畫布不透明）維持主題原樣。
+   - **已知限制**：深色主題下地圖底圖仍是淺色圖磚（OpenStreetMap）；使用的 Streamlit 內部選擇器（`.stApp`、`.stDialog`）在升級版本時須重新檢查外觀。
 
 ### 8.2 資料庫連線方式（擇一）
 
@@ -658,6 +665,8 @@ HW1/                                     # repo 根目錄
 │   └── workflows/
 │       └── weather_worker.yml           # 自動排程: 執行流程一
 ├── .gitignore                           # 安全防護清單（全 repo 唯一一份）
+├── .streamlit/
+│   └── config.toml                      # 淺色／深色主題（Streamlit Cloud 從根目錄執行，讀這一份）
 ├── requirements.txt                     # 相依套件清單（須在根目錄，供 Streamlit Cloud 偵測）
 └── forecast/                            # 專案程式碼與文件
     ├── scripts/
@@ -679,8 +688,10 @@ HW1/                                     # repo 根目錄
     │       ├── region_data.py           # 縣市 → 分區 (北/中/南/東/離島) 靜態對照表
     │       ├── map_view.py              # Folium 地圖視覺化（標記顯示溫度、關閉滾輪縮放、可標出被選縣市）
     │       ├── charts.py                # 氣溫／降雨機率趨勢圖（多系列折線，單一縣市為一條線）
+    │       ├── style.py                 # 玻璃擬態 CSS（淺色／深色）與摘要卡片 HTML
     │       └── format.py                # 顯示小工具（天氣現象 emoji）
     ├── .streamlit/
+    │   ├── config.toml                  # 淺色／深色主題（與根目錄 .streamlit/config.toml 內容相同，本機執行用）
     │   └── secrets.toml.example         # 前端 Secrets 範本 (實際 secrets.toml 不得 commit)
     ├── sql/
     │   └── init_supabase.sql            # Supabase DDL 建表 + RLS 腳本
@@ -719,12 +730,14 @@ HW1/                                     # repo 根目錄
 
 ### 10.2 待辦
 - 持續觀察後續排程時槽是否穩定自動觸發，且每次都更新 `pipeline_status` 的 `schedule` 列。
-- **告警設定第 3 階段（暫緩）**：視覺調整（玻璃效果等），分析結論見專案筆記；屆時再決定範圍。
+- **玻璃擬態（原告警設定第 3 階段）已實作，待部署端驗證**：淺色／深色切換是否立即生效、溫度文字色的對比、告警視窗的模糊與邊框是否出現、「⋮」→ Settings 實際出現的主題選項。
+- （選用）深色主題下改用深色地圖底圖（CartoDB 需要 API key，或另找免 key 的來源）。
 - （建議，低優先）「立即更新」觸發 GitHub 時，成功條件目前只認 HTTP 204；官方文件現只列 200，按鈕流程實測正常，由此推論目前實際回應為 204（未直接記錄回應碼）。可改為 200 或 204 都算成功，避免 GitHub 日後調整造成誤判「觸發失敗」。
 - 重新繪製 `architecture_diagram.svg`、`sequence_diagram.svg`（仍為 v1.1.0 版本，且尚未反映 Telegram 與告警設定）。
 - 將 workflow 的 `actions/checkout`、`actions/setup-python` 升級，消除 Node.js 20 deprecated 警告。
 
 ### 10.3 版本紀錄
+- **v1.9.0**：玻璃擬態外觀（淺色／深色兩組主題，`config.toml` 的 `[theme.light]`／`[theme.dark]` 加 `components/style.py` 的 CSS）：漸層光暈背景、摘要玻璃卡片、告警視窗模糊背景與圓角邊框、地圖圖例與提示框淺色玻璃；溫度文字色改為中等明度以兼顧淺色與深色底；降雨機率摘要改為與溫度相同的卡片。
 - **v1.8.3**：溫度數字依級距上色（重點摘要、明細表格、地圖提示，沿用地圖色階）；單一縣市氣溫圖改為與地區、全台相同的折線圖（含最高／最低／平均溫切換），移除原本的雙折線加範圍帶圖；氣溫圖 Y 軸從 0 開始；`requirements.txt` 固定 `streamlit==1.64.0`、`streamlit-folium==0.27.4`；新增 `CLAUDE.md`（Streamlit 開發慣例）。
 - **v1.8.2**：地圖標記的滑鼠提示新增獨立的「最高／最低」一行，並移除原本括號內的溫度範圍（重複資訊）；空值顯示「—」，不再出現 nan。
 - **v1.8.1**：告警設定入口改到標題列（「重新載入資料」右邊，沿用相同按鈕樣式），登入改為小視窗、登入後的設定改為大視窗（`st.dialog`），移除頁面下方的展開區塊；按下按鈕時若已登入會先從資料庫重讀設定；閒置逾時的提示改為偵測到時立刻顯示；畫面內容獨立為 `components/admin_ui.py`。
