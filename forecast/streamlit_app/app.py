@@ -19,6 +19,8 @@ from components.update_gate import MIN_INTERVAL_MINUTES, evaluate
 
 ALL_CITIES = "全部縣市"
 METRICS = {"最高溫": "max_temp", "最低溫": "min_temp", "平均溫": "avg"}
+TEMP_LINES = {"最高溫": "max_temp", "平均溫": "avg", "最低溫": "min_temp"}  # 單一縣市合併圖的線條順序
+TEMP_COLORS = ["#D55E00", "#009E73", "#0072B2"]  # 暖色最高、綠色平均、冷色最低
 
 WORKFLOW_FILE = "weather_worker.yml"
 REFRESH_AFTER_SECONDS = 60  # 觸發更新後，等這麼久自動重整頁面
@@ -270,7 +272,7 @@ else:
 
 # ---------- 地圖 ----------
 st.subheader("🗺️ 平均氣溫地圖")
-st.caption("滾輪縮放已關閉，請用地圖左上角的 ＋／－ 按鈕縮放，並可拖曳平移；滑鼠移到標記上可看詳細資料。"
+st.caption("手機請用兩指移動或縮放地圖（單指滑動是捲動頁面），電腦按住 Ctrl 再滾動滾輪縮放，也可用左上角的 ＋／－ 按鈕；滑鼠移到標記上可看詳細資料。"
            + (f"被選的縣市已放大並加外框，其餘{home_region or ''}縣市淡化作為對照。" if city else ""))
 st_folium(build_map(cur, fit=level == "region", highlight=city), height=520,
           use_container_width=True, returned_objects=[])
@@ -342,14 +344,22 @@ with tab_temp:
     if fc is None:
         st.info("沒有未來預報資料（資料可能已過期），請按「立即更新」。")
     else:  # 全台／地區／單一縣市都用同一種折線圖（單一縣市只有一條線）
-        metric_label = st.radio("氣溫指標", list(METRICS), horizontal=True, key="metric")
-        hint = "" if level == "city" else "每種顏色一條線，點圖例可強調單一系列，"
-        st.caption(f"{scope_label}｜{metric_label}｜{hint}虛線為現在")
-        data, order = series_data(METRICS[metric_label])
-        if data["值"].dropna().empty:
-            st.info("沒有可繪製的氣溫資料。")
+        if level == "city":  # 單一縣市：最高／平均／最低三條線畫在同一張圖
+            st.caption(f"{scope_label}｜最高溫、平均溫、最低溫｜點圖例可強調單一線條，虛線為現在")
+            data = pd.concat([series_data(col)[0].assign(系列=name) for name, col in TEMP_LINES.items()])
+            if data["值"].dropna().empty:
+                st.info("沒有可繪製的氣溫資料。")
+            else:
+                st.altair_chart(series_chart(data, now, "氣溫 (°C)", list(TEMP_LINES), zero=True,
+                                             colors=TEMP_COLORS), width="stretch")
         else:
-            st.altair_chart(series_chart(data, now, f"{metric_label} (°C)", order, zero=True), width="stretch")
+            metric_label = st.radio("氣溫指標", list(METRICS), horizontal=True, key="metric")
+            st.caption(f"{scope_label}｜{metric_label}｜每種顏色一條線，點圖例可強調單一系列，虛線為現在")
+            data, order = series_data(METRICS[metric_label])
+            if data["值"].dropna().empty:
+                st.info("沒有可繪製的氣溫資料。")
+            else:
+                st.altair_chart(series_chart(data, now, f"{metric_label} (°C)", order, zero=True), width="stretch")
 
 with tab_rain:  # 全台／地區／單一縣市都用同一種折線圖（單一縣市只有一條線）
     if fc is None or fc["rain_probability"].dropna().empty:

@@ -68,12 +68,19 @@ def _marker_html(temp: float, state: str = "normal") -> str:
             f'font:700 {14 if state == "selected" else 13}px/{size - 4}px sans-serif;text-align:center">{temp:.0f}°</div>')
 
 
+GESTURE_JS = "https://cdn.jsdelivr.net/npm/leaflet-gesture-handling@1.2.2/dist/leaflet-gesture-handling.min.js"
+GESTURE_CSS = "https://cdn.jsdelivr.net/npm/leaflet-gesture-handling@1.2.2/dist/leaflet-gesture-handling.min.css"
+GESTURE_OPTIONS = {"text": {"touch": "請用兩指移動地圖", "scroll": "按住 Ctrl 並滾動滾輪來縮放地圖",
+                            "scrollMac": "按住 ⌘ 並滾動滾輪來縮放地圖"}}
+
+
 def build_map(df: pd.DataFrame, fit: bool = False, highlight: str | None = None) -> folium.Map:
     """df 每縣市一列，需含 location_name、latitude、longitude 及溫度欄位。
 
     highlight 為縣市名稱時，該縣市放大加外框並置中，其餘縣市淡化但保留作為對照。
 
-    - 滾輪縮放已關閉（避免捲動頁面時誤觸），保留左上角 +/- 按鈕手動縮放。
+    - 手勢處理（Leaflet.GestureHandling）：手機單指滑動是捲頁面、雙指才操作地圖，電腦滾輪要按 Ctrl 才縮放；
+      保留左上角 +/- 按鈕手動縮放。
     - fit=True 時把視野聚焦到目前列出的縣市（選了單一地區時使用）。
     """
     focus = None
@@ -82,7 +89,10 @@ def build_map(df: pd.DataFrame, fit: bool = False, highlight: str | None = None)
         if not hit.empty:
             focus = [float(hit["latitude"].iloc[0]), float(hit["longitude"].iloc[0])]
     m = folium.Map(location=focus or [23.7, 121.0], zoom_start=9 if focus else 7, tiles="OpenStreetMap",
-                   scrollWheelZoom=False, zoom_control=True)
+                   zoom_control=True, gestureHandling=True, gestureHandlingOptions=GESTURE_OPTIONS)
+    # st_folium 只認元素的 default_js／default_css（不是 header）；複製一份清單再附加，避免改到 folium 的類別屬性
+    m.default_js = [*m.default_js, ("gesture_handling", GESTURE_JS)]
+    m.default_css = [*m.default_css, ("gesture_handling_css", GESTURE_CSS)]
     temps = display_temp(df)
     points = []
     for (_, row), temp in zip(df.iterrows(), temps):
