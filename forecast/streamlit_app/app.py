@@ -35,7 +35,7 @@ def secret(name: str) -> str | None:
 
 
 def trigger_update() -> tuple[bool, str]:
-    """呼叫 GitHub API 觸發 workflow_dispatch，成功回傳 HTTP 204。"""
+    """呼叫 GitHub API 觸發 workflow_dispatch；成功回傳 HTTP 204（官方文件現列 200，兩者都算成功）。"""
     repo, token = secret("GH_REPO"), secret("GH_DISPATCH_TOKEN")
     if not repo or not token:
         return False, "尚未設定 GH_REPO / GH_DISPATCH_TOKEN"
@@ -46,7 +46,7 @@ def trigger_update() -> tuple[bool, str]:
             json={"ref": "main"}, timeout=15)
     except requests.RequestException as exc:
         return False, f"無法連線至 GitHub：{exc}"
-    if resp.status_code == 204:
+    if resp.status_code in (200, 204):
         return True, ""
     return False, f"觸發失敗（HTTP {resp.status_code}）：{resp.text[:200]}"
 

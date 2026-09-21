@@ -593,7 +593,7 @@ jobs:
    - **流程**：每次頁面執行（含按下按鈕的那一次）開頭都重新讀取 `pipeline_status`，通過才呼叫 GitHub 觸發更新；判斷在 Streamlit 伺服器端執行，`GH_DISPATCH_TOKEN` 不會到瀏覽器。
    - **讀不到就不放行**：`pipeline_status` 讀取失敗或沒有任何列時，一律不放行並顯示「無法確認最後更新時間，暫不開放手動更新」。若有列但從未成功更新過（欄位皆空），視為可更新。
    - **以成功時間計算**：上次手動更新失敗不會鎖住按鈕，使用者可立即重試。
-   - 呼叫 `POST https://api.github.com/repos/{GH_REPO}/actions/workflows/weather_worker.yml/dispatches`，Header 帶 `Authorization: Bearer {GH_DISPATCH_TOKEN}`，Body `{"ref": "main"}`（成功回傳 HTTP 204）。
+   - 呼叫 `POST https://api.github.com/repos/{GH_REPO}/actions/workflows/weather_worker.yml/dispatches`，Header 帶 `Authorization: Bearer {GH_DISPATCH_TOKEN}`，Body `{"ref": "main"}`（成功回傳 HTTP 204；官方文件現列 200，程式將 200 與 204 都視為成功）。
    - **觸發後 60 秒自動重整頁面**：成功後按鈕改為「更新中…」並停用、顯示倒數；60 秒到就整頁重跑（重新查詢資料庫與 `pipeline_status`，地區／縣市的選擇會保留）。重整後若最後成功時間仍早於觸發時間，提示「更新尚未完成，請稍後按『重新載入資料』」；已完成則顯示「資料已更新完成」。另提供「重新載入資料」按鈕。
    - 頁面上另顯示「最近排程更新」與「最近手動更新」時間。
    - **已知的競爭情形**：判斷通過到 `pipeline_status` 實際更新約需 30～60 秒，這段時間內多人同時按仍會通過檢查。workflow 的 `concurrency` 最多保留一個執行中加一個排隊中，因此最多多跑 1 次；手動不推播、氣象署用量充裕，屬可接受。
@@ -733,13 +733,11 @@ HW1/                                     # repo 根目錄
 | M1 | ✅ 完成 | CWA、Supabase 金鑰已備妥；推播管道由 Google Chat 改為 **Telegram**（個人 Gmail 無法使用 Google Chat webhook 與 API，官方文件要求 Business/Enterprise Workspace）。`TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` 已設定於本機 `.env` 與 GitHub Secrets（Secrets 為使用者回報，尚未經實際排程推播驗證） |
 | M2 | ✅ 完成 | 資料表與函式皆已建立並驗證：`weather_forecasts`（含 `updated_at`、觸發器、`Asia/Taipei` 時區）、`pipeline_status`、`alert_city_settings`、`alert_slot_settings`（`anon` 完全讀不到也寫不了）、`private.admin_credential`（bcrypt 雜湊）與三個驗證／存取函式。`check_rls.py` 13 項全數通過（含兩張告警設定表）；`check_admin_rpc.py` 以真實密碼完整通過：錯誤密碼、空值、NULL、SQL 注入字串皆被拒絕且延遲約 1 秒，正確密碼可讀取與儲存，不合法門檻被資料庫拒絕，不能新增縣市，測試前後設定完全相同。**`init_supabase.sql` 內 `verify_admin` 已改為「無法確定就拒絕」（`IS DISTINCT FROM`）的加強版，並已由使用者在 Supabase 重新執行** |
 | M3 | ✅ 完成 | Telegram 推播已實測（手機收到範例訊息）。告警設定化（第 1 階段）已完成：縣市為主鍵、降雨／低溫／高溫各自的開關與門檻、可選發送時段（08:45／14:45／20:45）、W1 判斷視窗、預設全部縣市關閉、讀不到設定就不發送；單元與流程測試通過，並用真實資料模擬過。設定表已在 Supabase 建立，2026-09-20 23:52 的排程已用新版程式成功執行（該時槽不是發送時段，未發送）。**2026-09-21 08:45 的發送時段已實際收到由排程推播的告警（使用者確認）**，整條流程（排程觸發 → 讀取資料庫設定 → 條件判斷 → Telegram 推播）驗證正常。測試用設定由使用者自行還原 |
-| M4 | ✅ 完成 | 手動觸發與自動排程皆已實際成功：`cron`（台灣時間 02:45 起每 3 小時）已觀察到兩次自動觸發——2026-09-20 20:55（較時槽 20:45 延遲約 10 分鐘）與 23:52（較時槽 23:45 延遲約 7 分鐘），皆成功寫入預報並更新 `pipeline_status` 的 `schedule` 列（最後為 23:53）。後續時槽（02:45、05:45……）尚待持續觀察 |
+| M4 | ✅ 完成 | 手動觸發與自動排程皆已實際成功：`cron`（台灣時間 02:45 起每 3 小時）已觀察到兩次自動觸發——2026-09-20 20:55（較時槽 20:45 延遲約 10 分鐘）與 23:52（較時槽 23:45 延遲約 7 分鐘），皆成功寫入預報並更新 `pipeline_status` 的 `schedule` 列（最後為 23:53）。**使用者確認昨日到今日（2026-09-21 前後）的排程皆穩定取得資料**，後續時槽也持續自動觸發 |
 | M5 | ✅ 完成 | 地區／縣市互斥篩選、地圖（提示含平均、最高、最低溫與降雨機率）、趨勢圖（單一縣市與地區、全台同一種折線圖，氣溫圖 Y 軸從 0 開始）、明細與後續時段表格；溫度數字依級距上色（摘要、明細表格、地圖提示）。「立即更新」（20 分鐘間隔、觸發後 60 秒自動重整）已於 2026-09-20 21:27 實際驗證。告警設定：標題列「⚙️ 告警設定」按鈕，登入為小視窗、登入後設定為大視窗；測試涵蓋視窗內容 30 項、視窗開啟接線 26 項，並以真實瀏覽器（Edge）截圖確認標題列與登入視窗，設定視窗以假資料確認排版；資料庫端以真實密碼驗證登入與儲存。**告警設定視窗已在部署端由使用者驗證無誤**（輸入密碼前須將輸入法切為英文） |
-| M6 | ✅ 完成 | 已部署至 Streamlit Community Cloud 並正常顯示資料；部署端 Python 版本為 3.14（使用者確認）。`requirements.txt` 已固定 `streamlit==1.64.0`、`streamlit-folium==0.27.4`（以 Python 3.14 試算安裝確認可解析；Streamlit 的實際安裝版本未另行查證）。**溫度上色與縣市氣溫圖改版（v1.8.3）、告警設定視窗、玻璃擬態外觀（v1.9.0，淺色／深色）與日期查詢分頁（v1.10.0）部署後皆已由使用者確認功能正常**；多檔案更新時可能出現舊模組快取的 `ImportError`，於 Manage app 選 Reboot app 即可 |
+| M6 | ✅ 完成 | 已部署至 Streamlit Community Cloud 並正常顯示資料；部署端 Python 版本為 3.14（使用者確認）。`requirements.txt` 已固定 `streamlit==1.64.0`、`streamlit-folium==0.27.4`（以 Python 3.14 試算安裝確認可解析；Streamlit 的實際安裝版本未另行查證）。**溫度上色與縣市氣溫圖改版（v1.8.3）、告警設定視窗、玻璃擬態外觀（v1.9.0，淺色／深色）、日期查詢分頁（v1.10.0）與手機版選單和卡片間隔（v1.11.0）部署後皆已由使用者確認功能正常**；多檔案更新時可能出現舊模組快取的 `ImportError`，於 Manage app 選 Reboot app 即可 |
 
 ### 10.2 待辦
-- 持續觀察後續排程時槽是否穩定自動觸發，且每次都更新 `pipeline_status` 的 `schedule` 列。
-- （建議，低優先）「立即更新」觸發 GitHub 時，成功條件目前只認 HTTP 204；官方文件現只列 200，按鈕流程實測正常，由此推論目前實際回應為 204（未直接記錄回應碼）。可改為 200 或 204 都算成功，避免 GitHub 日後調整造成誤判「觸發失敗」。
 - 重新繪製 `architecture_diagram.svg`、`sequence_diagram.svg`（仍為 v1.1.0 版本，且尚未反映 Telegram 與告警設定）。
 - 將 workflow 的 `actions/checkout`、`actions/setup-python` 升級，消除 Node.js 20 deprecated 警告。
 
