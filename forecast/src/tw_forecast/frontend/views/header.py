@@ -10,7 +10,7 @@ import streamlit as st
 from tw_forecast.frontend import session
 from tw_forecast.frontend.formatting import format_last_update
 from tw_forecast.frontend.github_dispatch import WorkflowDispatcher
-from tw_forecast.frontend.update_gate import MIN_INTERVAL_MINUTES, Gate
+from tw_forecast.frontend.update_gate import MIN_INTERVAL_MINUTES, DispatchLog, Gate
 
 REFRESH_AFTER_SECONDS = 60  # 觸發更新後，等這麼久自動重整頁面
 
@@ -36,10 +36,11 @@ class HeaderActions:
 class Header:
     """標題列的按鈕與更新流程。"""
 
-    def __init__(self, gate: Gate, configured: bool, dispatcher: WorkflowDispatcher):
+    def __init__(self, gate: Gate, configured: bool, dispatcher: WorkflowDispatcher, dispatch_log: DispatchLog):
         self.gate = gate
         self.configured = configured
         self.dispatcher = dispatcher
+        self.dispatch_log = dispatch_log
         self.counting = "refresh_at" in st.session_state  # 已觸發更新、正在倒數
 
     def _buttons(self, where, suffix: str) -> tuple[bool, bool, bool]:
@@ -71,6 +72,7 @@ class Header:
         if actions.update and self.gate.allowed:
             ok, msg = self.dispatcher.trigger()
             if ok:
+                self.dispatch_log.record(session.now_taipei())  # 所有連線共用：F5 後按鈕仍維持停用
                 st.session_state["refresh_at"] = time.time() + REFRESH_AFTER_SECONDS
                 st.session_state["pending_since"] = session.now_taipei()
                 st.rerun()  # 重跑後按鈕停用並開始倒數

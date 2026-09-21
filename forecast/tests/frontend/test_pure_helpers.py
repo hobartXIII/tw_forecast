@@ -105,3 +105,40 @@ def test_interval_boundary_allows_and_uses_newest_of_sources():
     gate = update_gate.evaluate([status(90), status(3)], NOW)
     assert not gate.allowed  # 取較新的一筆
     assert update_gate.evaluate([status(90), status(30)], NOW).allowed
+
+
+# ---------- update_gate：觸發後的鎖定（F5 後按鈕不可重新開放） ----------
+def test_recent_dispatch_without_new_success_blocks_even_if_interval_passed():
+    rows = [status(60)]  # 距上次成功 60 分鐘，本來可更新
+    gate = update_gate.evaluate(rows, NOW, dispatched_at=NOW - timedelta(minutes=1))
+    assert not gate.allowed and gate.message == update_gate.IN_PROGRESS_MESSAGE
+
+
+def test_dispatch_lock_expires_so_a_failed_workflow_does_not_lock_forever():
+    just_over = NOW - timedelta(minutes=update_gate.DISPATCH_LOCK_MINUTES, seconds=1)
+    assert update_gate.evaluate([status(60)], NOW, dispatched_at=just_over).allowed
+
+
+def test_new_success_after_dispatch_releases_lock_then_interval_rule_applies():
+    dispatched = NOW - timedelta(minutes=2)
+    rows = [status(1)]  # 觸發之後已經有新的成功紀錄
+    gate = update_gate.evaluate(rows, NOW, dispatched_at=dispatched)
+    assert not gate.allowed and gate.message != update_gate.IN_PROGRESS_MESSAGE and "僅 1 分鐘" in gate.message
+
+
+def test_dispatch_lock_applies_when_never_succeeded():
+    gate = update_gate.evaluate([{"last_success_at": None}], NOW, dispatched_at=NOW - timedelta(seconds=30))
+    assert not gate.allowed and gate.message == update_gate.IN_PROGRESS_MESSAGE
+
+
+def test_unreadable_status_still_reports_unknown_not_in_progress():
+    gate = update_gate.evaluate(None, NOW, dispatched_at=NOW)
+    assert gate.message == update_gate.UNKNOWN_MESSAGE
+
+
+def test_dispatch_log_remembers_latest_time():
+    log = update_gate.DispatchLog()
+    assert log.last is None
+    log.record(NOW)
+    log.record(NOW + timedelta(minutes=1))
+    assert log.last == NOW + timedelta(minutes=1)

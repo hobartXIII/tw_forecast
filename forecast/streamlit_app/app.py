@@ -44,9 +44,10 @@ def main() -> None:
             status_rows = ForecastQuery(sb).update_status()
         except Exception:
             status_rows = None
-    gate = update_gate.evaluate(status_rows, session.now_taipei())
+    log = session.dispatch_log()
+    gate = update_gate.evaluate(status_rows, session.now_taipei(), dispatched_at=log.last)
     dispatcher = WorkflowDispatcher(session.secret("GH_REPO"), session.secret("GH_DISPATCH_TOKEN"))
-    header = Header(gate, configured, dispatcher)
+    header = Header(gate, configured, dispatcher, log)
     with head_right:
         actions = header.render_controls()
     header.handle(actions, status_rows)
