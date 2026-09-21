@@ -12,6 +12,7 @@ from streamlit.testing.v1 import AppTest
 from fakes import FakeClient, forecast_rows
 from tw_forecast.frontend import repository, session
 from tw_forecast.frontend.repository import TZ
+from tw_forecast.frontend.update_gate import DispatchLog
 
 APP = Path(__file__).resolve().parents[2] / "streamlit_app" / "app.py"
 NOW = datetime(2026, 9, 21, 10, 0, tzinfo=TZ)
@@ -29,6 +30,7 @@ def app(monkeypatch):
     monkeypatch.setattr(session, "get_client", lambda: client)
     monkeypatch.setattr(session, "is_configured", lambda: True)
     monkeypatch.setattr(session, "secret", lambda name: None)
+    monkeypatch.setattr(session, "dispatch_log", lambda log=DispatchLog(): log)  # 每個測試各自一份，不共用快取
     import streamlit_folium
     monkeypatch.setattr(streamlit_folium, "st_folium", lambda *a, **k: {})
     return AppTest.from_file(str(APP), default_timeout=120).run()
@@ -113,3 +115,18 @@ def test_empty_database_shows_warning(monkeypatch):
     monkeypatch.setattr(session, "secret", lambda name: None)
     at = AppTest.from_file(str(APP), default_timeout=120).run()
     assert any("資料庫目前沒有預報資料" in w.value for w in at.warning)
+
+
+def test_refresh_after_dispatch_keeps_update_button_disabled(app, monkeypatch):
+    """按下「立即更新」→ F5（全新連線）後，資料庫還沒更新，按鈕仍要維持停用。"""
+    from tw_forecast.frontend import github_dispatch
+    monkeypatch.setattr(github_dispatch.WorkflowDispatcher, "trigger", lambda self: (True, ""))
+    monkeypatch.setattr(session, "secret", lambda name: "x")
+    next(b for b in app.button if b.label == "🔄 立即更新").click().run()
+    assert not app.exception
+    assert next(b for b in app.button if b.label == "⏳ 更新中…").disabled  # 同一連線：倒數中
+
+    fresh = AppTest.from_file(str(APP), default_timeout=120).run()  # 模擬 F5：全新的連線
+    button = next(b for b in fresh.button if b.label == "🔄 立即更新")
+    assert button.disabled
+    assert any("已觸發更新" in i.value for i in fresh.info)

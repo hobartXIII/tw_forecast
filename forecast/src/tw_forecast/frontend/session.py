@@ -7,6 +7,7 @@ import streamlit as st
 from supabase import Client, create_client
 
 from tw_forecast.frontend.repository import now_taipei  # noqa: F401  重新匯出，views 統一從 session 取現在時間
+from tw_forecast.frontend.update_gate import DispatchLog
 
 
 def secret(name: str) -> str | None:
@@ -26,3 +27,9 @@ def is_configured() -> bool:
 def get_client() -> Client:
     """建立 Supabase 連線（anon key，權限由 RLS 控制；不可放 service_role）。"""
     return create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_ANON_KEY"])
+
+
+@st.cache_resource
+def dispatch_log() -> DispatchLog:
+    """最近一次「立即更新」的觸發時間，所有連線共用（F5、新分頁、其他使用者都看得到）。"""
+    return DispatchLog()
