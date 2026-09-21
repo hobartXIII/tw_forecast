@@ -725,6 +725,7 @@ HW1/                                     # repo 根目錄
     │   ├── make_admin_hash.py           # 本機產生管理者密碼的 bcrypt 雜湊（只在本機使用，需 pip install bcrypt）
     │   └── get_telegram_chat_id.py      # 查詢 TELEGRAM_CHAT_ID（token 只讀本機 .env）
     ├── pytest.ini                       # pythonpath = src tests
+    ├── ARCHITECTURE.md                  # 程式架構說明：每個檔案的功能、前後端資料流、修改對照表
     ├── .streamlit/
     │   ├── config.toml                  # 淺色／深色主題（與根目錄 .streamlit/config.toml 內容相同，本機執行用）
     │   └── secrets.toml.example         # 前端 Secrets 範本 (實際 secrets.toml 不得 commit)

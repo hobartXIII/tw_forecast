@@ -31,6 +31,7 @@ HW1/
     ├── sql/             # init_supabase.sql（weather_forecasts、pipeline_status、RLS、updated_at、時區）
     ├── streamlit_app/   # app.py（流程二入口）
     ├── .streamlit/      # secrets.toml.example
+    ├── ARCHITECTURE.md  # 每個檔案的功能、資料流與「想改某功能該看哪裡」
     ├── SPECIFICATION.md
     └── README.md
 ```
