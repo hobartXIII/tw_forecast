@@ -221,18 +221,23 @@ def show(value, unit: str, fmt: str = ".0f") -> str:
     return "—" if value is None or pd.isna(value) else f"{value:{fmt}} {unit}"
 
 
-def temp_metric(col, label: str, value, fmt: str = ".0f", sub: str = "") -> None:
-    """玻璃卡片，數字依溫度級距上色（st.metric 的數值無法指定顏色）。"""
-    col.markdown(card(label, colored(value, show(value, "°C", fmt)), sub), unsafe_allow_html=True)
+def temp_metric(col, label: str, value, fmt: str = ".0f", aside: str = "") -> None:
+    """玻璃卡片，數字依溫度級距上色（st.metric 的數值無法指定顏色）；aside 顯示在數值右側。"""
+    col.markdown(card(label, colored(value, show(value, "°C", fmt)), aside), unsafe_allow_html=True)
 
 
-def plain_metric(col, label: str, value: str, sub: str = "") -> None:
+def plain_metric(col, label: str, value: str) -> None:
     """與 temp_metric 同外觀的玻璃卡片，數字不上色（降雨機率）。"""
-    col.markdown(card(label, value, sub), unsafe_allow_html=True)
+    col.markdown(card(label, value), unsafe_allow_html=True)
+
+
+def with_city(label: str, name: str) -> str:
+    """多縣市摘要：標題列在指標名稱後接縣市名（「最高溫　臺中市」），數值放下一行。"""
+    return f"{label}　{name}" if name else label
 
 
 k1, k2, k3, k4 = st.columns(4)
-if city:  # 單一縣市：直接呈現該縣市自己的數值，天氣現象放在「平均氣溫」下方
+if city:  # 單一縣市：直接呈現該縣市自己的數值，天氣現象（圖示與文字）放在「平均氣溫」數值右側
     weather = crow["weather_condition"] if isinstance(crow["weather_condition"], str) else "—"
     icon = weather_icon(weather, is_night(crow["forecast_time_start"], crow["forecast_time_end"]))
     temp_metric(k1, f"{city} 平均氣溫", crow["avg"], ".1f", f"{icon} {weather}".strip())
@@ -244,9 +249,9 @@ else:
     cold, cold_city = extreme("min_temp", False)
     wet, wet_city = extreme("rain_probability", True)
     temp_metric(k1, "平均氣溫", cur["avg"].mean(), ".1f")
-    temp_metric(k2, "最高溫", hot, sub=hot_city)
-    temp_metric(k3, "最低溫", cold, sub=cold_city)
-    plain_metric(k4, "最高降雨機率", show(wet, "%"), wet_city)
+    temp_metric(k2, with_city("最高溫", hot_city), hot)
+    temp_metric(k3, with_city("最低溫", cold_city), cold)
+    plain_metric(k4, with_city("最高降雨機率", wet_city), show(wet, "%"))
 
 # ---------- 地圖 ----------
 st.subheader("🗺️ 平均氣溫地圖")

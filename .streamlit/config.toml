@@ -5,7 +5,7 @@
 
 [theme.light]
 primaryColor = "#d9480f"
-backgroundColor = "#FBF7F0"           # 暖白／象牙白
+backgroundColor = "#F7F5F0"           # 淡米白（頁面實際背景是 style.py 的 #F7F5F0 → #EAF3F8 左右漸層）
 secondaryBackgroundColor = "#F3ECE0"
 textColor = "#2B2620"
 

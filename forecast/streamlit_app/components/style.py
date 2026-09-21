@@ -14,13 +14,17 @@ CSS = """
   --glass-border: light-dark(rgba(255,255,255,.75), rgba(255,255,255,.16));
   --glass-shadow: light-dark(rgba(90,70,40,.14), rgba(0,0,0,.40));
   --glass-blur: 14px;
-  --glow-1: light-dark(rgba(255,183,140,.50), rgba(120,90,255,.30));
-  --glow-2: light-dark(rgba(150,200,255,.45), rgba(0,170,200,.22));
-  --glow-3: light-dark(rgba(255,214,150,.45), rgba(255,110,90,.18));
+  /* 淺色：由左（淡米白）到右（淡天空藍）的線性漸層；深色：純色底加三個彩色光暈 */
+  --bg-left: light-dark(#F7F5F0, #12141C);
+  --bg-right: light-dark(#EAF3F8, #12141C);
+  --glow-1: light-dark(transparent, rgba(120,90,255,.30));
+  --glow-2: light-dark(transparent, rgba(0,170,200,.22));
+  --glow-3: light-dark(transparent, rgba(255,110,90,.18));
   background-image:
     radial-gradient(circle at 10% 6%, var(--glow-1) 0, transparent 42%),
     radial-gradient(circle at 90% 10%, var(--glow-2) 0, transparent 40%),
-    radial-gradient(circle at 72% 94%, var(--glow-3) 0, transparent 46%) !important;
+    radial-gradient(circle at 72% 94%, var(--glow-3) 0, transparent 46%),
+    linear-gradient(90deg, var(--bg-left), var(--bg-right)) !important;
   background-attachment: fixed !important;
 }
 
@@ -37,7 +41,7 @@ CSS = """
 }
 .glass .lbl { font-size: 14px; opacity: .7; }
 .glass .val { font-size: 34px; font-weight: 600; line-height: 1.3; }
-.glass .sub { font-size: 14px; opacity: .7; margin-top: 2px; }
+.glass .aside { font-size: 16px; font-weight: 400; opacity: .85; margin-left: 12px; line-height: 1.4; }
 
 /* 告警設定視窗：背後的頁面模糊，視窗加圓角、細邊框與陰影（視窗底色沿用主題，避免表格難讀） */
 .stDialog {
@@ -58,7 +62,7 @@ def inject() -> None:
     st.markdown(CSS, unsafe_allow_html=True)
 
 
-def card(label: str, value_html: str, sub: str = "") -> str:
-    """摘要卡片的 HTML；value_html 可含 colored() 產生的上色 span。"""
-    sub_html = f'<div class="sub">{sub}</div>' if sub else ""
-    return f'<div class="glass"><div class="lbl">{label}</div><div class="val">{value_html}</div>{sub_html}</div>'
+def card(label: str, value_html: str, aside: str = "") -> str:
+    """摘要卡片的 HTML。value_html 可含 colored() 產生的上色 span；aside 顯示在數值右側（如天氣圖示與文字）。"""
+    aside_html = f'<span class="aside">{aside}</span>' if aside else ""
+    return f'<div class="glass"><div class="lbl">{label}</div><div class="val">{value_html}{aside_html}</div></div>'
