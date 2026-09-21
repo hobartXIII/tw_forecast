@@ -107,13 +107,28 @@ if configured:
 gate = evaluate(status_rows, db.now_taipei())
 counting = "refresh_at" in st.session_state
 
+def header_buttons(where, suffix: str) -> tuple[bool, bool, bool]:
+    """標題列三顆按鈕（立即更新、重新載入資料、告警設定）。
+
+    電腦版與手機版各畫一組（suffix 區分 key），由 style.py 的 CSS 依視窗寬度只顯示其中一組；
+    where 是放按鈕的位置（欄位、或手機版選單 popover 的內容區）。
+    """
+    update = where[0].button("⏳ 更新中…" if counting else "🔄 立即更新", key=f"update_{suffix}",
+                             disabled=counting or not gate.allowed, width="stretch")
+    reload = where[1].button("♻️ 重新載入資料", key=f"reload_{suffix}", width="stretch")
+    admin = where[2].button("⚙️ 告警設定", key=f"admin_{suffix}", width="stretch", disabled=not configured)
+    return update, reload, admin
+
+
 with head_right:
-    btn_a, btn_b, btn_c = st.columns(3)
-    clicked = btn_a.button("⏳ 更新中…" if counting else "🔄 立即更新",
-                           disabled=counting or not gate.allowed, width="stretch")
-    if btn_b.button("♻️ 重新載入資料", width="stretch"):
-        st.rerun()
-    open_admin = btn_c.button("⚙️ 告警設定", width="stretch", disabled=not configured)
+    with st.container(key="hdr_desktop"):  # 電腦版：三顆按鈕並排
+        up_d, reload_d, admin_d = header_buttons(st.columns(3), "d")
+    with st.container(key="hdr_mobile"):  # 手機版：收進漢堡選單，點開才看到三個選項
+        with st.popover("☰ 選單", width="stretch"):
+            up_m, reload_m, admin_m = header_buttons([st, st, st], "m")
+clicked, open_admin = up_d or up_m, admin_d or admin_m
+if reload_d or reload_m:
+    st.rerun()
 
 # 每次執行（含按下按鈕的這一次）開頭都會重新讀取狀態表，所以這裡的 gate 就是按下當下的最新判斷；
 # 通過才呼叫更新。

@@ -28,6 +28,14 @@ CSS = """
   background-attachment: fixed !important;
 }
 
+/* 標題列按鈕：電腦版並排三顆；手機版（與 st.columns 自動堆疊的寬度相同）改顯示漢堡選單 */
+.st-key-hdr_mobile { display: none; }
+@media (max-width: 640px) {
+  .st-key-hdr_desktop { display: none; }
+  .st-key-hdr_mobile { display: block; }
+  .glass { margin-bottom: 12px; }  /* 摘要卡片在手機上上下堆疊，卡片之間要留間隔，否則會連在一起 */
+}
+
 /* 摘要卡片 */
 .glass {
   background: var(--glass-bg);
