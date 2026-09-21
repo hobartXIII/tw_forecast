@@ -142,3 +142,25 @@ def test_dispatch_log_remembers_latest_time():
     log.record(NOW)
     log.record(NOW + timedelta(minutes=1))
     assert log.last == NOW + timedelta(minutes=1)
+
+
+# ---------- update_gate：間隔倒數需要的等待秒數 ----------
+def test_interval_block_reports_wait_seconds_and_elapsed_minutes():
+    gate = update_gate.evaluate([status(6)], NOW)
+    assert not gate.allowed
+    assert gate.elapsed_minutes == 6
+    assert gate.wait_seconds == pytest.approx(14 * 60)
+
+
+def test_wait_seconds_counts_down_to_zero_at_the_boundary():
+    assert update_gate.evaluate([status(19.5)], NOW).wait_seconds == pytest.approx(30)
+    assert update_gate.evaluate([status(20)], NOW).allowed  # 剛好滿間隔：放行、沒有等待時間
+
+
+@pytest.mark.parametrize("gate", [
+    update_gate.evaluate(None, NOW),                                                           # 讀不到狀態
+    update_gate.evaluate([status(60)], NOW, dispatched_at=NOW - timedelta(minutes=1)),         # 剛觸發（鎖定）
+    update_gate.evaluate([status(60)], NOW),                                                   # 放行
+])
+def test_only_interval_block_has_wait_seconds(gate):
+    assert gate.wait_seconds is None and gate.elapsed_minutes is None

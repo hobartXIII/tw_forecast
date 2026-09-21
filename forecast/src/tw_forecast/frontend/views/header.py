@@ -4,15 +4,18 @@
 """
 import time
 from dataclasses import dataclass
+from datetime import timedelta
 
 import streamlit as st
 
 from tw_forecast.frontend import session
+from tw_forecast.frontend.countdown import countdown_html
 from tw_forecast.frontend.formatting import format_last_update
 from tw_forecast.frontend.github_dispatch import WorkflowDispatcher
 from tw_forecast.frontend.update_gate import MIN_INTERVAL_MINUTES, DispatchLog, Gate
 
 REFRESH_AFTER_SECONDS = 60  # 觸發更新後，等這麼久自動重整頁面
+COUNTDOWN_HEIGHT = 72       # 間隔倒數的 iframe 高度（手機上文字折成兩行剛好；st.iframe 的自動高度會量成 150px，不可用）
 
 
 @st.fragment(run_every=1)
@@ -23,6 +26,25 @@ def refresh_countdown() -> None:
         st.session_state.pop("refresh_at", None)
         st.rerun()
     st.info(f"已觸發更新，{int(left) + 1} 秒後自動重整頁面…")
+
+
+def _interval_countdown(elapsed_minutes: int, until: float) -> None:
+    """間隔倒數：數字由瀏覽器每秒更新（見 countdown.py）；這個 fragment 只在 until 之後被觸發一次，
+    到時整頁重跑，重新讀取資料庫，按鈕就會變成可按。"""
+    left = until - time.time()
+    if left <= 0:
+        st.rerun()
+    # 內容只有數字與寫死的文字（不含使用者輸入），可安全嵌入 iframe
+    st.iframe(countdown_html(f"距上次更新僅 {elapsed_minutes} 分鐘，需間隔 {MIN_INTERVAL_MINUTES} 分鐘，還需 ",
+                             left, " 才可更新"), height=COUNTDOWN_HEIGHT)
+
+
+def show_interval_countdown(gate: Gate) -> None:
+    """gate 為「距上次成功更新不滿間隔」時顯示倒數。剩餘時間只在這一次腳本執行時取一次，之後由瀏覽器倒數；
+    伺服器端只設定一個在剩餘時間後才觸發的計時（不是每秒更新）。"""
+    until = time.time() + gate.wait_seconds
+    run_after = timedelta(seconds=max(gate.wait_seconds + 1, 2))  # 多 1 秒，確保觸發時資料庫的時間已過門檻
+    st.fragment(run_every=run_after)(_interval_countdown)(gate.elapsed_minutes, until)
 
 
 @dataclass(frozen=True)
@@ -80,6 +102,8 @@ class Header:
                 st.error(msg)
         elif self.counting:
             refresh_countdown()
+        elif self.gate.wait_seconds is not None:  # 距上次更新不滿間隔：倒數，時間到自動重整
+            show_interval_countdown(self.gate)
         elif not self.gate.allowed:
             st.info(self.gate.message)
 

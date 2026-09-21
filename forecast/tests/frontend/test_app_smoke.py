@@ -159,3 +159,18 @@ def test_refresh_after_dispatch_keeps_update_button_disabled(app, monkeypatch):
     button = next(b for b in fresh.button if b.label == "🔄 立即更新")
     assert button.disabled
     assert any("已觸發更新" in i.value for i in fresh.info)
+
+
+def test_interval_block_shows_browser_countdown_instead_of_static_text(app, monkeypatch):
+    """距上次成功更新不滿 20 分鐘：改用瀏覽器倒數（iframe），不再顯示靜態的「請約 N 分鐘後再試」。"""
+    from tw_forecast.frontend import github_dispatch  # noqa: F401  確保模組已載入
+    recent = [{"trigger_type": "schedule", "last_success_at": "2026-09-21T09:54:00+08:00", "last_run_at": None},
+              {"trigger_type": "manual", "last_success_at": "2026-09-21T08:00:00+08:00", "last_run_at": None}]
+    client = FakeClient({"weather_forecasts": forecast_rows(datetime(2026, 9, 20, 6, 0, tzinfo=TZ), days=4),
+                         "pipeline_status": recent})
+    monkeypatch.setattr(session, "get_client", lambda: client)
+    at = AppTest.from_file(str(APP), default_timeout=120).run()  # 現在 10:00，距 09:54 只有 6 分鐘
+    assert not at.exception
+    assert next(b for b in at.button if b.label == "🔄 立即更新").disabled
+    assert not any("請約" in i.value for i in at.info)
+    assert len(at.get("iframe")) == 1
