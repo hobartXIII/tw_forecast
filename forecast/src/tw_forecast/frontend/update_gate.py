@@ -43,10 +43,16 @@ class DispatchLog:
 
 @dataclass(frozen=True)
 class Gate:
-    """判斷結果：allowed 為是否放行；message 為不放行時的提示；last_success 為最後一次成功更新時間。"""
+    """判斷結果：allowed 為是否放行；message 為不放行時的提示；last_success 為最後一次成功更新時間。
+
+    只有「距上次成功更新不滿間隔」這種情況才有 wait_seconds（還要等幾秒才可再更新）與 elapsed_minutes
+    （已過幾分鐘），畫面用它們做倒數；其他情況為 None。
+    """
     allowed: bool
     message: str = ""
     last_success: pd.Timestamp | None = None
+    wait_seconds: float | None = None
+    elapsed_minutes: int | None = None
 
 
 def evaluate(rows: list[dict] | None, now: datetime, min_minutes: int = MIN_INTERVAL_MINUTES,
@@ -56,7 +62,10 @@ def evaluate(rows: list[dict] | None, now: datetime, min_minutes: int = MIN_INTE
         return Gate(False, UNKNOWN_MESSAGE)
     times = [r["last_success_at"] for r in rows if r.get("last_success_at") is not None]
     last = max(times) if times else None
-    if dispatched_at is not None and now - dispatched_at < timedelta(minutes=DISPATCH_LOCK_MINUTES)             and (last is None or last < dispatched_at):
+    just_dispatched = (dispatched_at is not None
+                       and now - dispatched_at < timedelta(minutes=DISPATCH_LOCK_MINUTES)
+                       and (last is None or last < dispatched_at))
+    if just_dispatched:
         return Gate(False, IN_PROGRESS_MESSAGE, last)  # 剛觸發、資料庫還沒出現新的成功紀錄
     if last is None:  # 有紀錄表但從未成功更新過：沒有東西需要保護，放行
         return Gate(True)
@@ -66,5 +75,6 @@ def evaluate(rows: list[dict] | None, now: datetime, min_minutes: int = MIN_INTE
         elapsed_min = max(int(elapsed.total_seconds() // 60), 0)
         wait_min = math.ceil(wait.total_seconds() / 60)
         return Gate(False, f"距上次更新僅 {elapsed_min} 分鐘，手動更新需間隔至少 {min_minutes} 分鐘，"
-                           f"請約 {wait_min} 分鐘後再試", last)
+                           f"請約 {wait_min} 分鐘後再試", last,
+                    wait_seconds=wait.total_seconds(), elapsed_minutes=elapsed_min)
     return Gate(True, last_success=last)
