@@ -535,10 +535,10 @@ jobs:
         working-directory: forecast   # repo 根目錄為 HW1/，專案程式碼在 forecast/
     steps:
       - name: 檢出專案程式碼
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: 安裝 Python 環境
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: '3.11'
           cache: 'pip'
@@ -809,9 +809,10 @@ HW1/                                     # repo 根目錄
 - **驗證重構後的告警推播**：重構後的後端已在 Actions 上手動執行成功（2026-09-21 21:40 於 `6ef729a`、22:31 於 `20804d0`，寫入資料庫與更新 `pipeline_status` 皆正常）；但手動執行不推播，**告警推播路徑（讀設定 → 判斷 → Telegram）尚未在 Actions 上實際跑過**。需要有縣市已啟用、且下一個發送時段（如 2026-09-22 08:45）有符合條件的預報，才會觀察到推播；目前告警設定為使用者還原後的狀態，要驗證可暫時啟用一個縣市並把降雨門檻設為 0，驗證後改回。
 - **在雲端驗證 v1.12.1、v1.12.2**：按「立即更新」後 F5，按鈕應維持停用並顯示「已觸發更新，正在等待完成」；選一個縣市後從地區選單點「全部地區」，應回到全台。並用手機實際操作地圖（單指捲頁面、雙指操作地圖）。
 - 刪除雲端上驗證用的測試 app（它追蹤的分支 `refactor/src-layout` 已刪除，會部署失敗）。
-- 將 workflow 的 `actions/checkout`、`actions/setup-python` 升級，消除 Node.js 20 deprecated 警告。
+- 留意 **2026-10-19** GitHub 的 `ubuntu-latest` 會遷移到 Ubuntu 26（Actions 日誌上的通知）：遷移後觀察排程是否正常；若有相容性問題，可先把 `runs-on` 暫時固定為 `ubuntu-24.04`。目前未受影響，遷移後的行為尚未驗證。
 
 ### 10.3 版本紀錄
+- **v1.12.6**：workflow 升級 `actions/checkout` v4→v7、`actions/setup-python` v5→v7（兩者皆改用 Node 24）；已在 Actions 以升級分支手動執行驗證成功（2026-09-21 22:55，run 35615448013），原本的「Node.js 20 deprecated」警告消失，日誌只剩 `ubuntu-latest` 遷移通知；規格書 §7 的 workflow 範例、README 常見問題與待辦同步更新。
 - **v1.12.5**：重繪 `architecture_diagram.svg`（系統總體架構）與 `sequence_diagram.svg`（核心資料流程），並更新 §1.1 文字圖與 §2 的 Mermaid 流程圖、時序圖，反映目前架構（Telegram、告警設定、管理者登入、`pipeline_status`、立即更新鎖定、後端不使用 pandas 等）；移除舊版檢視頁 `view_architecture.html`。
 - **v1.12.4**：待辦更新：重構後的後端手動執行已在 Actions 驗證成功，告警推播路徑仍待發送時段驗證；已合併的分支已清理，倉庫只保留 `main` 與 `old`（重構前的版本）。
 - **v1.12.3**：新增 `ARCHITECTURE.md`（每個檔案的功能、前後端資料流圖、「想改某功能該看哪個檔案」對照表）；README、規格書與 `CLAUDE.md` 更新至目前版本（單一縣市合併氣溫圖與曲線、地圖雙指手勢、立即更新鎖定、地區選單重設、`.devcontainer/`、`requirements-dev.txt`、待辦與驗證狀態）。

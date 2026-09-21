@@ -123,4 +123,4 @@ python -m pytest                          # 在 forecast/ 執行；不連網、�
 | 儀表板縣市數是 44 而不是 22 | 資料表裡有新舊兩批時段重疊的資料（氣象署第一個時段會隨時間縮短）。前端只取最新一批，因此需要 workflow 至少成功寫入一次帶 `updated_at` 的資料。 |
 | `updated_at` 顯示 UTC | 於 Supabase 執行 `sql/init_supabase.sql`（含 `ALTER DATABASE ... SET timezone`），並用新的連線／SQL 分頁查詢。 |
 | `ImportError`（改了程式卻沒生效） | 長時間執行的 Streamlit 可能沿用舊模組，尤其一次改動多個檔案時。本機重啟 `streamlit run`；雲端到 Manage app 選 Reboot app。 |
-| Actions 出現 Node.js 20 deprecated 警告 | 只是提醒 `checkout@v4`、`setup-python@v5` 之後會改用 Node 24，不影響執行。 |
+| Actions 日誌出現「ubuntu-latest 將於 2026-10-19 遷移到 Ubuntu 26」 | 只是 GitHub 的通知，不是錯誤，不影響目前執行。遷移後若排程出現安裝或相容性問題，可先把 workflow 的 `runs-on` 暫時固定成 `ubuntu-24.04`。（先前的「Node.js 20 deprecated」警告已在 v1.12.6 升級 `checkout@v7`、`setup-python@v7` 後消除。） |
