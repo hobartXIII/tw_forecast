@@ -2,7 +2,7 @@
 
 輸入：範圍內的「目前時段」資料（含 avg 欄位）與篩選範圍。輸出：畫面。
 單一縣市顯示該縣市自己的數值；其他範圍顯示平均與極值（並標出是哪個縣市）。
-卡片頂端色帶：溫度卡片依氣溫級距（與地圖標記同色），降雨卡片依降雨色階（淺藍 → 靛藍）並附進度條。
+卡片邊框依級距色發光：溫度卡片依氣溫級距（與地圖標記同色），降雨卡片依降雨色階（淺藍 → 靛藍）並附進度條。
 """
 import pandas as pd
 import streamlit as st
@@ -24,14 +24,14 @@ def _extreme(cur: pd.DataFrame, column: str, largest: bool) -> tuple[float | Non
 
 
 def _temp_card(col, index: int, label: str, value, fmt: str = ".0f", aside: str = "") -> None:
-    """玻璃卡片，數字與頂端色帶依溫度級距上色（st.metric 的數值無法指定顏色）；aside 顯示在數值右側。"""
+    """玻璃卡片，數字與發光邊框依溫度級距上色（st.metric 的數值無法指定顏色）；aside 顯示在數值右側。"""
     accent = "" if value is None or pd.isna(value) else temp_color(value)
     col.markdown(card(label, colored(value, format_value(value, "°C", fmt)), aside, accent=accent, index=index),
                  unsafe_allow_html=True)
 
 
 def _rain_card(col, index: int, label: str, value) -> None:
-    """降雨機率卡片：數字不上色，頂端色帶與進度條依降雨色階。"""
+    """降雨機率卡片：數字不上色，發光邊框與進度條依降雨色階。"""
     col.markdown(card(label, format_value(value, "%"), accent=rain_color(value), index=index, meter=value),
                  unsafe_allow_html=True)
 

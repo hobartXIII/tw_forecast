@@ -1,4 +1,7 @@
-"""趨勢與明細的分頁區塊：依範圍決定有哪些分頁，並交給各分頁的畫面函式。"""
+"""趨勢與明細的分頁區塊：依範圍決定有哪些分頁，並交給各分頁的畫面函式。
+
+整區包在玻璃容器 glass_tabs 裡；頁籤的藥丸外觀與容器樣式見 style.py。
+"""
 import pandas as pd
 import streamlit as st
 
@@ -15,22 +18,23 @@ def render_tabs(scope: Scope, cur: pd.DataFrame, fc: pd.DataFrame | None, query:
 
     單一縣市有 4 個分頁；全台／地區在明細右邊多一個「後續時段」分頁。
     """
-    if scope.city:
-        tab_temp, tab_rain, tab_table, tab_date = st.tabs(
-            ["📈 氣溫趨勢", "🌧️ 降雨機率", "📋 一週預報", "📅 日期查詢"])
-        tab_next = None
-    else:
-        tab_temp, tab_rain, tab_table, tab_next, tab_date = st.tabs(
-            ["📈 氣溫趨勢", "🌧️ 降雨機率", "📋 目前時段明細", "🕒 後續時段", "📅 日期查詢"])
+    with st.container(key="glass_tabs"):
+        if scope.city:
+            tab_temp, tab_rain, tab_table, tab_date = st.tabs(
+                ["📈 氣溫趨勢", "🌧️ 降雨機率", "📋 一週預報", "📅 日期查詢"])
+            tab_next = None
+        else:
+            tab_temp, tab_rain, tab_table, tab_next, tab_date = st.tabs(
+                ["📈 氣溫趨勢", "🌧️ 降雨機率", "📋 目前時段明細", "🕒 後續時段", "📅 日期查詢"])
 
-    with tab_temp:
-        render_temperature_tab(scope, fc, now)
-    with tab_rain:
-        render_rain_tab(scope, fc, now)
-    with tab_table:
-        render_table_tab(scope, cur, fc)
-    if tab_next is not None:
-        with tab_next:
-            render_next_tab(scope, fc, period_start)
-    with tab_date:
-        render_date_tab(scope, query, now)
+        with tab_temp:
+            render_temperature_tab(scope, fc, now)
+        with tab_rain:
+            render_rain_tab(scope, fc, now)
+        with tab_table:
+            render_table_tab(scope, cur, fc)
+        if tab_next is not None:
+            with tab_next:
+                render_next_tab(scope, fc, period_start)
+        with tab_date:
+            render_date_tab(scope, query, now)

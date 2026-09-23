@@ -51,9 +51,27 @@ def test_default_page_renders_without_errors(app):
     assert [t.label for t in app.tabs] == ["📈 氣溫趨勢", "🌧️ 降雨機率", "📋 目前時段明細", "🕒 後續時段", "📅 日期查詢"]
     cards = [m.value for m in app.markdown if 'class="glass"' in m.value]
     assert len(cards) == 4 and "平均氣溫" in cards[0]
-    assert all("--accent:" in c for c in cards[1:3])  # 最高溫／最低溫卡片有級距色帶
+    assert all("--accent:" in c for c in cards[1:3])  # 最高溫／最低溫卡片的邊框依級距色發光
     assert 'class="meter"' in cards[3]  # 降雨機率卡片有進度條
     assert len(app.dataframe) == 2  # 目前時段明細（22 縣市）與後續時段
+
+
+def keyed_block(node, key):
+    """找出 st.container(key=key) 對應的區塊（區塊 id 以 -{key} 結尾）；找不到回傳 None。"""
+    for child in getattr(node, "children", {}).values():
+        if str(getattr(getattr(child, "proto", None), "id", "")).endswith(f"-{key}"):
+            return child
+        found = keyed_block(child, key)
+        if found is not None:
+            return found
+    return None
+
+
+def test_map_and_tabs_are_inside_glass_containers(app):
+    glass_map, glass_tabs = keyed_block(app._tree, "glass_map"), keyed_block(app._tree, "glass_tabs")
+    assert glass_map is not None and glass_tabs is not None
+    assert [s.value for s in glass_map.subheader] == ["🗺️ 平均氣溫地圖"]
+    assert len(glass_tabs.tabs) == 5 and len(glass_tabs.dataframe) == 2
 
 
 def test_update_status_caption_and_allowed_button(app):

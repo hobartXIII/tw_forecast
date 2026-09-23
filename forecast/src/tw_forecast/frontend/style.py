@@ -1,7 +1,8 @@
 """玻璃擬態樣式（淺色／深色）：頁面開頭呼叫 inject() 一次，摘要卡片用 card() 產生 HTML。
 
 淺色、深色的底色與文字色在 .streamlit/config.toml 的 [theme.light] / [theme.dark]；
-這裡只放 config.toml 做不到的：漸層背景、半透明模糊的卡片（頂端色帶、進度條、進場與浮起動畫）、視窗外觀。
+這裡只放 config.toml 做不到的：漸層背景、半透明模糊的卡片（依級距色發光的邊框、進度條、進場與浮起動畫）、
+地圖區與分頁區的玻璃容器、藥丸狀頁籤、視窗外觀。
 
 淺色／深色靠 CSS 的 light-dark(淺色值, 深色值)：Streamlit 會依目前主題在 .stApp 上設定 color-scheme，
 所以使用者在右上角選單切換主題時立刻跟著換，不需要重跑頁面。要調整顏色或模糊程度，改下面 CSS 變數即可。
@@ -16,6 +17,7 @@ CSS = """
   --glass-border: light-dark(rgba(255,255,255,.75), rgba(255,255,255,.16));
   --glass-shadow: light-dark(rgba(90,70,40,.14), rgba(0,0,0,.40));
   --glass-blur: 14px;
+  --accent-primary: light-dark(#d9480f, #ff8a5c);  /* 與 config.toml 的 primaryColor 相同，頁籤用 */
   /* 淺色：由左（淡米白）到右（淡天空藍）的線性漸層加三個淡光暈（暖橘、天藍、淡紫）；
      深色：純色底加三個較濃的彩色光暈。玻璃卡片要背後有色彩變化才看得出模糊 */
   --bg-left: light-dark(#F7F5F0, #12141C);
@@ -42,22 +44,51 @@ CSS = """
   .glass { margin-bottom: 12px; }  /* 摘要卡片在手機上上下堆疊，卡片之間要留間隔，否則會連在一起 */
 }
 
-/* 摘要卡片：頂端色帶的顏色（--accent）與進場延遲（--delay）由 card() 以 inline style 帶入 */
-.glass {
-  position: relative;
-  overflow: hidden;
+/* 地圖區與分頁區的玻璃容器（views/map_section.py、views/tabs.py 的 st.container(key=...)），與摘要卡片同一組變數 */
+.st-key-glass_map, .st-key-glass_tabs {
   background: var(--glass-bg);
   border: 1px solid var(--glass-border);
-  border-radius: 16px;
-  padding: 14px 18px;
-  min-height: 112px;
+  border-radius: 20px;
+  padding: 18px 22px;
   box-shadow: 0 8px 32px var(--glass-shadow);
   -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(140%);
   backdrop-filter: blur(var(--glass-blur)) saturate(140%);
 }
-.glass::before {  /* 頂端色帶：溫度卡片依氣溫級距、降雨卡片依降雨色階 */
-  content: ""; position: absolute; inset: 0 0 auto 0; height: 4px;
-  background: var(--accent, transparent);
+.st-key-glass_map { margin-top: 12px; }  /* 摘要卡片的 markdown 底部是負邊距，不加會與卡片貼在一起 */
+@media (max-width: 640px) {  /* 手機上內距縮小，留寬度給地圖與圖表（須寫在上面那條規則之後才蓋得過） */
+  .st-key-glass_map, .st-key-glass_tabs { padding: 12px 14px; border-radius: 16px; }
+  .st-key-glass_map { margin-top: 0; }  /* 手機上摘要卡片已有 12px 下邊距 */
+}
+
+/* 分頁頁籤改成藥丸狀。Streamlit 1.64 的頁籤是 React Aria 元件：頁籤有 role="tab"／aria-selected，
+   原本的橘色底線是 .react-aria-SelectionIndicator、灰色基準線是 tablist 的 ::after，兩者都藏起來 */
+.stTabs [role="tablist"] { gap: 6px; align-items: center; }
+.stTabs [role="tablist"]::after, .stTabs .react-aria-SelectionIndicator { display: none; }
+.stTabs [role="tab"] {
+  height: 34px; padding: 0 14px; border-radius: 999px;
+  border: 1px solid transparent;
+  transition: background-color .2s ease, border-color .2s ease;
+}
+.stTabs [role="tab"]:hover { background: color-mix(in srgb, currentColor 7%, transparent); }
+.stTabs [role="tab"][aria-selected="true"] {
+  background: color-mix(in srgb, var(--accent-primary) 14%, transparent);
+  border-color: color-mix(in srgb, var(--accent-primary) 40%, transparent);
+}
+
+/* 摘要卡片：發光邊框的顏色（--accent）與進場延遲（--delay）由 card() 以 inline style 帶入。
+   邊框混入淡淡的級距色（溫度卡片依氣溫級距、降雨卡片依降雨色階），外圍再加一圈同色柔光；沒有 --accent 時就是一般玻璃邊框 */
+.glass {
+  --glow: light-dark(color-mix(in srgb, var(--accent, transparent) 40%, transparent),
+                     color-mix(in srgb, var(--accent, transparent) 60%, transparent));  /* 深色底上光暈要濃一點才看得出來 */
+  background: var(--glass-bg);
+  border: 1px solid color-mix(in srgb, var(--accent, transparent) 45%, var(--glass-border));
+  border-radius: 16px;
+  padding: 14px 18px;
+  min-height: 112px;
+  box-shadow: 0 8px 32px var(--glass-shadow), 0 0 20px -2px var(--glow),
+              inset 0 0 16px color-mix(in srgb, var(--accent, transparent) 10%, transparent);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(140%);
+  backdrop-filter: blur(var(--glass-blur)) saturate(140%);
 }
 .glass .lbl { font-size: 14px; opacity: .7; }
 .glass .val { font-size: 34px; font-weight: 600; line-height: 1.3; }
@@ -79,7 +110,11 @@ CSS = """
     animation-delay: var(--delay, 0ms);
     transition: transform .2s ease, box-shadow .2s ease;
   }
-  .glass:hover { transform: translateY(-3px); box-shadow: 0 14px 40px var(--glass-shadow); }
+  .glass:hover {  /* 浮起並讓光暈更亮 */
+    transform: translateY(-3px);
+    box-shadow: 0 14px 40px var(--glass-shadow), 0 0 28px 2px var(--glow),
+                inset 0 0 16px color-mix(in srgb, var(--accent, transparent) 14%, transparent);
+  }
   .glass .meter > span { animation: meter-grow .9s cubic-bezier(.2,.7,.2,1) backwards; animation-delay: calc(var(--delay, 0ms) + .25s); }
 }
 
@@ -109,7 +144,7 @@ def card(label: str, value_html: str, aside: str = "", *, accent: str = "", inde
          meter: float | None = None) -> str:
     """摘要卡片的 HTML。value_html 可含 colored() 產生的上色 span；aside 顯示在數值右側（如天氣圖示與文字）。
 
-    accent 為頂端色帶與進度條的顏色（空字串不畫色帶）；index 為卡片的位置（0 起算），決定進場動畫的延遲；
+    accent 為發光邊框與進度條的顏色（空字串為一般玻璃邊框、不發光）；index 為卡片的位置（0 起算），決定進場動畫的延遲；
     meter 為 0～100 的數值時，在數值下方畫一條進度條（降雨機率用），None 或 NaN 不畫。
     """
     aside_html = f'<span class="aside">{aside}</span>' if aside else ""
