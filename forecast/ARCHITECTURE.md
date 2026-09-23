@@ -155,7 +155,7 @@ flowchart TD
 | :--- | :--- | :--- |
 | `streamlit_app/app.py` | `main` | 入口；只負責依序串接各區塊，不含商業邏輯 |
 | `frontend/session.py` | `get_client`、`secret`、`dispatch_log` | 讀取 secrets、建立並快取 Supabase 連線、所有連線共用的觸發記錄 |
-| `frontend/style.py` | `inject`、`card` | 玻璃擬態 CSS（淺色／深色）、摘要卡片 HTML（依級距色發光的邊框、降雨進度條、進場與浮起動畫）、地圖區與分頁區的玻璃容器、藥丸狀頁籤 |
+| `frontend/style.py` | `inject`、`card` | 玻璃擬態 CSS（淺色／深色）、摘要卡片 HTML（依級距色發光的邊框、降雨進度條、進場與浮起動畫）、地圖區與分頁區的玻璃容器、藥丸狀頁籤；捲動時收起圖表提示框的 JS（`TOOLTIP_JS`，手機用） |
 | `frontend/admin_ui.py` | `AdminPanel` | 告警設定視窗的內容與登入狀態（密碼只存在本次連線的記憶體、閒置 15 分鐘登出） |
 | `views/header.py` | `Header` | 標題列三顆按鈕（電腦並排、手機收進選單）與更新流程的提示 |
 | `views/filters.py` | `render_filters` | 地區與縣市互斥下拉選單 |

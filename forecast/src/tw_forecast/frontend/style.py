@@ -2,7 +2,7 @@
 
 淺色、深色的底色與文字色在 .streamlit/config.toml 的 [theme.light] / [theme.dark]；
 這裡只放 config.toml 做不到的：漸層背景、半透明模糊的卡片（依級距色發光的邊框、進度條、進場與浮起動畫）、
-地圖區與分頁區的玻璃容器、藥丸狀頁籤、視窗外觀。
+地圖區與分頁區的玻璃容器、藥丸狀頁籤、視窗外觀；另有一小段 JS 在捲動時收起圖表提示框（手機用）。
 
 淺色／深色靠 CSS 的 light-dark(淺色值, 深色值)：Streamlit 會依目前主題在 .stApp 上設定 color-scheme，
 所以使用者在右上角選單切換主題時立刻跟著換，不需要重跑頁面。要調整顏色或模糊程度，改下面 CSS 變數即可。
@@ -118,6 +118,9 @@ CSS = """
   .glass .meter > span { animation: meter-grow .9s cubic-bezier(.2,.7,.2,1) backwards; animation-delay: calc(var(--delay, 0ms) + .25s); }
 }
 
+/* 只放 TOOLTIP_JS 腳本的 st.html 元素高度為 0，但外層容器仍會多佔一個元素間距，整個藏起來（腳本已執行，不受影響） */
+.stElementContainer:has(> [data-testid="stHtml"] > script:only-child) { display: none; }
+
 /* 告警設定視窗：背後的頁面模糊，視窗加圓角、細邊框與陰影（視窗底色沿用主題，避免表格難讀） */
 .stDialog {
   -webkit-backdrop-filter: blur(8px);
@@ -132,9 +135,26 @@ CSS = """
 """
 
 
+# 手機上點折線圖的資料點會跳出 Vega 提示框（#vg-tooltip-element，出現時帶 visible class），
+# 但手機沒有「滑鼠移開」，提示框會一直掛著。這裡在任何捲動或手指滑動時把它收起來，再點資料點仍會照常出現。
+# Streamlit 捲動的是內部容器而非 window，scroll 事件不冒泡，所以用 capture 監聽；
+# 每次重跑都會再執行一次，用全域旗標避免重複綁定。
+TOOLTIP_JS = """
+<script>
+if (!window.__twHideTooltipOnScroll) {
+  window.__twHideTooltipOnScroll = true;
+  const hide = () => document.getElementById("vg-tooltip-element")?.classList.remove("visible");
+  document.addEventListener("scroll", hide, {capture: true, passive: true});
+  document.addEventListener("touchmove", hide, {capture: true, passive: true});
+}
+</script>
+"""
+
+
 def inject() -> None:
-    """在頁面開頭呼叫一次。"""
+    """在頁面開頭呼叫一次：注入 CSS，以及「捲動時收起圖表提示框」的腳本。"""
     st.markdown(CSS, unsafe_allow_html=True)
+    st.html(TOOLTIP_JS, unsafe_allow_javascript=True)
 
 
 CARD_STAGGER_MS = 80  # 四張卡片依序淡入的間隔

@@ -74,6 +74,12 @@ def test_map_and_tabs_are_inside_glass_containers(app):
     assert len(glass_tabs.tabs) == 5 and len(glass_tabs.dataframe) == 2
 
 
+def test_tooltip_hiding_script_is_injected_with_javascript_allowed(app):
+    """手機上捲動或滑動時收起圖表提示框的腳本（style.TOOLTIP_JS）要以允許 JavaScript 的方式注入。"""
+    scripts = [h.proto for h in app.get("html") if "vg-tooltip-element" in h.proto.body]
+    assert len(scripts) == 1 and scripts[0].unsafe_allow_javascript
+
+
 def test_update_status_caption_and_allowed_button(app):
     captions = [c.value for c in app.caption]
     assert any("最近排程更新 09/21 09:30" in c and "最近手動更新 09/21 08:00" in c for c in captions)
