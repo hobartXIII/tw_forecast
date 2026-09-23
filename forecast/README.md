@@ -111,6 +111,14 @@ python -m pytest                          # 在 forecast/ 執行；不連網、�
 2. Advanced settings → Secrets 以 TOML 格式貼上 `SUPABASE_URL`、`SUPABASE_ANON_KEY`（要用「立即更新」再加 `GH_REPO`、`GH_DISPATCH_TOKEN`）。
 3. 之後 push 到 `main` 會自動重新部署；資料由 GitHub Actions 更新，不必重新部署。
 
+**目前實際部署網址**：<https://twforecast-gxbrpkkigluvdh48shimyo.streamlit.app/>
+
+<p align="center"><img src="assets/deploy_qrcode.png" alt="部署網址 QR code" width="180"></p>
+
+**GitHub Repo**：<https://github.com/hobartXIII/tw_forecast>
+
+<p align="center"><img src="assets/github_qrcode.png" alt="GitHub Repo QR code" width="180"></p>
+
 ## 常見問題
 
 | 現象 | 原因與處理 |
