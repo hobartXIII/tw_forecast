@@ -22,13 +22,13 @@ load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 SAMPLE = [
     {"location_name": "臺北市", "forecast_time_start": "2026-09-21T06:00:00+08:00",
      "forecast_time_end": "2026-09-21T18:00:00+08:00", "label": "進行中",
-     "rain_probability": 70, "min_temp": 25.0, "max_temp": 30.0},
+     "rain_probability": 70, "min_temp": 25.0, "max_temp": 30.0, "reasons": ["降雨"]},
     {"location_name": "新北市", "forecast_time_start": "2026-09-21T06:00:00+08:00",
      "forecast_time_end": "2026-09-21T18:00:00+08:00", "label": "進行中",
-     "rain_probability": 65, "min_temp": 24.0, "max_temp": 29.0},
+     "rain_probability": 20, "min_temp": 10.0, "max_temp": 16.0, "reasons": ["低溫"]},
     {"location_name": "基隆市", "forecast_time_start": "2026-09-21T18:00:00+08:00",
      "forecast_time_end": "2026-09-22T06:00:00+08:00", "label": "即將開始",
-     "rain_probability": 80, "min_temp": 23.0, "max_temp": 27.0},
+     "rain_probability": 80, "min_temp": 28.0, "max_temp": 36.0, "reasons": ["降雨", "高溫"]},
 ]
 
 

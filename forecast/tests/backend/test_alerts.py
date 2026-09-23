@@ -104,6 +104,27 @@ def test_is_hit_respects_switches_and_ignores_null():
     assert not alerts.is_hit({"rain_probability": None, "min_temp": None, "max_temp": None}, CityRule(enabled=True))
 
 
+# ---------- hit_reasons ----------
+def test_hit_reasons_each_condition():
+    rule = CityRule(enabled=True)
+    assert alerts.hit_reasons({"rain_probability": 60, "min_temp": 20, "max_temp": 30}, rule) == ["降雨"]
+    assert alerts.hit_reasons({"rain_probability": 10, "min_temp": 12, "max_temp": 18}, rule) == ["低溫"]
+    assert alerts.hit_reasons({"rain_probability": 10, "min_temp": 28, "max_temp": 35}, rule) == ["高溫"]
+    assert alerts.hit_reasons({"rain_probability": 59, "min_temp": 13, "max_temp": 34}, rule) == []
+
+
+def test_hit_reasons_multiple_in_fixed_order():
+    rule = CityRule(enabled=True, min_temp=30)
+    assert alerts.hit_reasons({"rain_probability": 90, "min_temp": 25, "max_temp": 36}, rule) == ["降雨", "低溫", "高溫"]
+
+
+def test_hit_reasons_respects_switches_and_ignores_null():
+    rule = CityRule(enabled=True, rain_on=False, min_on=False)
+    assert alerts.hit_reasons({"rain_probability": 100, "min_temp": -5, "max_temp": 40}, rule) == ["高溫"]
+    assert alerts.hit_reasons({"rain_probability": None, "min_temp": 5, "max_temp": None},
+                              CityRule(enabled=True)) == ["低溫"]
+
+
 # ---------- evaluate_alerts ----------
 def settings_for(*rows, slots=("08:45", "14:45", "20:45")):
     return alerts.parse_settings(list(rows), [{"slot": s, "enabled": True} for s in slots])[0]
@@ -115,6 +136,7 @@ def test_evaluate_returns_only_enabled_cities_that_hit_in_window():
     hits, wend = alerts.evaluate_alerts(records, settings, dt(21, 8, 45))
     assert [h["location_name"] for h in hits] == ["臺北市"]
     assert hits[0]["label"] == "進行中"
+    assert hits[0]["reasons"] == ["降雨"]
     assert wend == dt(21, 14, 45)
 
 

@@ -2,7 +2,8 @@
 
 輸入：符合條件的預報列、涵蓋範圍說明、bot token 與 chat id。輸出：一則 Telegram 訊息。
 
-- 訊息：標題 + 每筆一行；超過上限時最後顯示「另有 N 筆未列出」。
+- 訊息：標題 + 副標題（含各觸發原因筆數）+ 每筆一行（行首標出觸發原因：降雨／低溫／高溫）；
+  超過上限時最後顯示「另有 N 筆未列出」。
 - 以 HTML 模式送出（標題粗體），所有動態內容都經過跳脫；若 Telegram 仍回 400（格式問題）
   會自動改用純文字重送一次。
 - ⚠️ 錯誤訊息絕不可含 token：requests 的例外訊息會帶完整網址（網址裡就有 token），
@@ -21,6 +22,7 @@ __all__ = ["NotifyError", "TelegramNotifier", "build_alert_text"]
 MAX_LINES = 30
 MAX_CHARS = 4000  # Telegram 單則訊息上限 4096 字，保留餘裕
 API_URL = "https://api.telegram.org/bot{token}/sendMessage"
+REASON_ICONS = {"降雨": "🌧️", "低溫": "🥶", "高溫": "🥵"}  # 順序同 alerts.REASONS
 
 
 def _num(value, unit: str = "") -> str:
@@ -28,14 +30,29 @@ def _num(value, unit: str = "") -> str:
 
 
 def _line(row: dict) -> str:
-    """縣市 起~迄 進行中/即將開始｜降雨｜氣溫。沒有 forecast_time_end / label 的列（如舊資料）只顯示起點。"""
+    """[觸發原因] 縣市 起~迄 進行中/即將開始｜降雨｜氣溫。
+
+    有 reasons 時行首標出觸發原因；只因溫度觸發時氣溫排在降雨前面，讓觸發的數值先出現。
+    沒有 forecast_time_end / label / reasons 的列（如舊資料）省略對應部分。
+    """
     start = datetime.fromisoformat(row["forecast_time_start"]).astimezone(TZ)
     period = f"{start:%m/%d %H:%M}"
     if row.get("forecast_time_end"):
         period += f"~{datetime.fromisoformat(row['forecast_time_end']).astimezone(TZ):%H:%M}"
     label = f" {row['label']}" if row.get("label") else ""
-    return (f"{row['location_name']} {period}{label}｜降雨 {_num(row.get('rain_probability'), '%')}｜"
-            f"{_num(row.get('min_temp'))}~{_num(row.get('max_temp'), '°C')}")
+    reasons = row.get("reasons") or []
+    prefix = "".join(f"{REASON_ICONS[r]}{r}" for r in reasons) + " " if reasons else ""
+    rain = f"降雨 {_num(row.get('rain_probability'), '%')}"
+    temp = f"{_num(row.get('min_temp'))}~{_num(row.get('max_temp'), '°C')}"
+    values = f"{temp}｜{rain}" if reasons and "降雨" not in reasons else f"{rain}｜{temp}"
+    return f"{prefix}{row['location_name']} {period}{label}｜{values}"
+
+
+def _reason_counts(rows: list[dict]) -> str:
+    """「：降雨 2、低溫 1」；同一筆符合多個條件時各自計入。沒有 reasons 的列不計，全都沒有時回傳空字串。"""
+    counts = {r: sum(r in (row.get("reasons") or []) for row in rows) for r in REASON_ICONS}
+    parts = [f"{r} {n}" for r, n in counts.items() if n]
+    return f"：{'、'.join(parts)}" if parts else ""
 
 
 def build_alert_text(rows: list[dict], scope: str, title: str = "🔔 天氣告警",
@@ -44,7 +61,7 @@ def build_alert_text(rows: list[dict], scope: str, title: str = "🔔 天氣告�
 
     超過筆數或字數上限的部分以「另有 N 筆未列出」取代。
     """
-    subtitle = f"{scope}，共 {len(rows)} 筆符合條件"
+    subtitle = f"{scope}，共 {len(rows)} 筆符合條件{_reason_counts(rows)}"
     lines, used = [], len(title) + len(subtitle) + 40  # 40 = 「另有 N 筆」與換行的預留
     for row in rows[:max_lines]:
         line = _line(row)

@@ -48,6 +48,32 @@ def test_text_has_title_scope_and_one_line_per_row():
     assert rich.startswith("<b>🔔 天氣告警</b>")
 
 
+def reason_row(name, reasons, rain=10, tmin=20.0, tmax=28.0):
+    return {**row(name, rain=rain, tmin=tmin, tmax=tmax), "reasons": reasons}
+
+
+def test_each_reason_has_its_own_prefix_and_triggering_value_first():
+    _, plain = build_alert_text([reason_row("臺北市", ["低溫"], tmin=8.0, tmax=15.0),
+                                 reason_row("臺南市", ["降雨"], rain=80),
+                                 reason_row("高雄市", ["高溫"], tmax=36.0)], "範圍")
+    assert "🥶低溫 臺北市 09/21 06:00~18:00 進行中｜8~15°C｜降雨 10%" in plain
+    assert "🌧️降雨 臺南市 09/21 06:00~18:00 進行中｜降雨 80%｜20~28°C" in plain
+    assert "🥵高溫 高雄市 09/21 06:00~18:00 進行中｜20~36°C｜降雨 10%" in plain
+
+
+def test_multiple_reasons_on_one_row_and_subtitle_counts():
+    _, plain = build_alert_text([reason_row("臺北市", ["降雨", "高溫"], rain=80, tmax=36.0),
+                                 reason_row("新北市", ["降雨"], rain=70),
+                                 reason_row("基隆市", ["低溫"], tmin=9.0)], "範圍")
+    assert "🌧️降雨🥵高溫 臺北市 09/21 06:00~18:00 進行中｜降雨 80%｜20~36°C" in plain
+    assert "共 3 筆符合條件：降雨 2、低溫 1、高溫 1" in plain
+
+
+def test_rows_without_reasons_keep_plain_subtitle():
+    _, plain = build_alert_text([row()], "範圍")
+    assert plain.splitlines()[1] == "範圍，共 1 筆符合條件"
+
+
 def test_html_special_characters_are_escaped():
     rich, _ = build_alert_text([row("<b>&")], "範圍")
     assert "&lt;b&gt;&amp;" in rich

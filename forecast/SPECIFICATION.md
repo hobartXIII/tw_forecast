@@ -491,7 +491,7 @@ REVOKE ALL ON public.alert_slot_settings FROM anon, authenticated;
      - 只啟用單一時段時，視窗為隔天同一時間。
    - **重複出現屬預期**：進行中的時段會在相鄰兩次發送重複出現（如 06:00～18:00 在 08:45 與 14:45 都可能出現），這是「早、午、晚三次報告」的設計，不再有「每個時段只通知一次」的去重；一天最多 3 則。
    - **讀不到設定就不發送（fail closed）**：設定表不存在、連線失敗時略過推播並在日誌警告，資料照常更新、不視為失敗；不合法的縣市／時段列略過並警告。
-   - **推播管道為 Telegram**（`src/tw_forecast/backend/notifier.py`）：符合條件則組成純文字訊息 —— 標題「🔔 天氣告警」、副標題「涵蓋 MM/DD HH:MM～MM/DD HH:MM，共 N 筆符合條件」、每筆一行 `縣市 MM/DD HH:MM~HH:MM 進行中｜降雨 X%｜最低~最高°C`（值為 NULL 顯示「—」）—— 呼叫 `sendMessage` 傳給 `TELEGRAM_CHAT_ID`。
+   - **推播管道為 Telegram**（`src/tw_forecast/backend/notifier.py`）：符合條件則組成純文字訊息 —— 標題「🔔 天氣告警」、副標題「涵蓋 MM/DD HH:MM～MM/DD HH:MM，共 N 筆符合條件：降雨 a、低溫 b、高溫 c」（同一筆符合多個條件時各自計入，0 筆的條件不列）、每筆一行 `[觸發原因] 縣市 MM/DD HH:MM~HH:MM 進行中｜降雨 X%｜最低~最高°C`，觸發原因為 🌧️降雨／🥶低溫／🥵高溫（可多個）；只因溫度觸發時氣溫排在降雨前面（值為 NULL 顯示「—」）—— 呼叫 `sendMessage` 傳給 `TELEGRAM_CHAT_ID`。
    - **訊息格式**：以 HTML 模式送出（標題粗體），所有動態內容經過跳脫；Telegram 回 400（格式問題）時自動改用純文字重送一次。
    - **筆數與字數上限**：最多列 30 筆且總長不超過 4000 字，超過的部分以「另有 N 筆未列出」取代。
    - **⚠️ token 不可外洩**：`requests` 的例外訊息會帶完整網址（網址含 token），而失敗訊息會寫進 `pipeline_status.last_error`（前端可讀）。因此推播失敗一律改寫為不含網址的訊息（如「Telegram 回應 401：…」「無法連線至 Telegram（ConnectionError）」），且記錄失敗原因前會遮蔽所有機密環境變數的值。
