@@ -104,6 +104,13 @@ def city_value(at):
     return next(s for s in at.selectbox if s.label == "縣市").value
 
 
+def test_city_selectbox_disables_typing_so_mobile_keyboard_stays_hidden(app):
+    """縣市選項 > 10 個，手機上可打字時會跳鍵盤；filter_mode=None 關掉打字。"""
+    from streamlit.proto.SelectWidgetFilterMode_pb2 import FILTER_MODE_NONE
+    city = next(s for s in app.selectbox if s.label == "縣市")
+    assert len(city.options) > 10 and city.proto.filter_mode == FILTER_MODE_NONE
+
+
 def test_region_and_city_filters_are_mutually_exclusive(app):
     select(app, "縣市", "臺中市")
     assert region_value(app) is None  # 選了縣市：地區顯示空白提示，不是「全部地區」
