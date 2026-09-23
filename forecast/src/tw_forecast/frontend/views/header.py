@@ -9,7 +9,7 @@ from datetime import timedelta
 import streamlit as st
 
 from tw_forecast.frontend import session
-from tw_forecast.frontend.countdown import countdown_html
+from tw_forecast.frontend.countdown import interval_countdown_html
 from tw_forecast.frontend.formatting import format_last_update
 from tw_forecast.frontend.github_dispatch import WorkflowDispatcher
 from tw_forecast.frontend.update_gate import MIN_INTERVAL_MINUTES, DispatchLog, Gate
@@ -28,15 +28,13 @@ def refresh_countdown() -> None:
     st.info(f"已觸發更新，{int(left) + 1} 秒後自動重整頁面…")
 
 
-def _interval_countdown(elapsed_minutes: int, until: float) -> None:
-    """間隔倒數：數字由瀏覽器每秒更新（見 countdown.py）；這個 fragment 只在 until 之後被觸發一次，
-    到時整頁重跑，重新讀取資料庫，按鈕就會變成可按。"""
+def _interval_countdown(until: float) -> None:
+    """間隔倒數：兩個數字都由瀏覽器每秒更新、彼此同步（見 countdown.py）；這個 fragment 只在 until 之後
+    被觸發一次，到時整頁重跑，重新讀取資料庫，按鈕就會變成可按。"""
     left = until - time.time()
     if left <= 0:
         st.rerun()
-    # 內容只有數字與寫死的文字（不含使用者輸入），可安全嵌入 iframe
-    st.iframe(countdown_html(f"距上次更新僅 {elapsed_minutes} 分鐘，需間隔 {MIN_INTERVAL_MINUTES} 分鐘，還需 ",
-                             left, " 才可更新"), height=COUNTDOWN_HEIGHT)
+    st.iframe(interval_countdown_html(MIN_INTERVAL_MINUTES, left), height=COUNTDOWN_HEIGHT)
 
 
 def show_interval_countdown(gate: Gate) -> None:
@@ -44,7 +42,7 @@ def show_interval_countdown(gate: Gate) -> None:
     伺服器端只設定一個在剩餘時間後才觸發的計時（不是每秒更新）。"""
     until = time.time() + gate.wait_seconds
     run_after = timedelta(seconds=max(gate.wait_seconds + 1, 2))  # 多 1 秒，確保觸發時資料庫的時間已過門檻
-    st.fragment(run_every=run_after)(_interval_countdown)(gate.elapsed_minutes, until)
+    st.fragment(run_every=run_after)(_interval_countdown)(until)
 
 
 @dataclass(frozen=True)

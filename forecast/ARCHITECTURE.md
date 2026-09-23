@@ -144,7 +144,7 @@ flowchart TD
 | `frontend/regions.py` | `REGIONS`、`region_of`、`cities_in` | 縣市 → 地區（北／中／南／東／離島）對照表 |
 | `frontend/formatting.py` | `weather_icon`、`is_night`、`format_*` | 天氣圖示與日夜判斷、時間與數值的顯示文字 |
 | `frontend/update_gate.py` | `Gate`、`evaluate`、`DispatchLog` | 「立即更新」是否可按：距上次成功滿 20 分鐘，且觸發後 5 分鐘內資料庫尚無新紀錄時鎖定；被間隔擋住時提供剩餘秒數給倒數用 |
-| `frontend/countdown.py` | `countdown_html`、`format_mmss` | 瀏覽器端倒數的 HTML（純函式）：數字由瀏覽器每秒更新，伺服器不必每秒重跑 |
+| `frontend/countdown.py` | `interval_countdown_html`、`format_mmss` | 瀏覽器端倒數的 HTML（純函式）：「已過 X 分鐘」與「還需 mm:ss」都由瀏覽器從同一個剩餘秒數推導、每 250ms 一起更新，伺服器不必每秒重跑 |
 | `frontend/github_dispatch.py` | `WorkflowDispatcher` | 呼叫 GitHub API 觸發後端 workflow |
 | `frontend/admin.py` | `AlertSettingsService`、`validate`、`build_payload` | 告警設定的資料層：經資料庫函式讀寫、儲存前驗證、錯誤訊息遮蔽密碼 |
 
