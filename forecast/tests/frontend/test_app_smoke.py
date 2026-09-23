@@ -107,6 +107,14 @@ def test_default_selection_is_all_regions_and_all_cities(app):
     assert region_value(app) == "全部地區" and city_value(app) == "全部縣市"
 
 
+def test_clearing_region_with_no_city_selected_snaps_back_to_all_regions(app):
+    """地區選單因支援空白提示而順便可清空（×）；沒選縣市時清空地區不應停在空白提示，因為沒有
+    「兩者都不選」這個狀態。"""
+    next(s for s in app.selectbox if s.label == "地區").select(None).run()
+    assert not app.exception
+    assert region_value(app) == "全部地區" and city_value(app) == "全部縣市"
+
+
 def test_metric_radio_switches_region_chart(app):
     select(app, "地區", "北部地區")
     app.radio[0].set_value("最低溫").run()

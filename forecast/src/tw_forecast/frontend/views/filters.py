@@ -2,6 +2,9 @@
 
 選了縣市時，地區選單改顯示空白提示（值為 None）而不是「全部地區」：下拉選單只有在值改變時才會觸發切換，
 若這時仍顯示「全部地區」，使用者再點「全部地區」就不會有任何反應、縣市也清不掉。
+
+因為地區選單支援上述的空白提示，Streamlit 會順便讓它多一個可清空的 × 圖示；若使用者在沒選縣市時點了這個 ×，
+會跳回「全部地區」而不是留在空白提示（沒有「兩者都不選」這個狀態）。
 """
 import streamlit as st
 
@@ -10,6 +13,8 @@ from tw_forecast.frontend.scope import Scope
 
 
 def _on_region_change() -> None:
+    if st.session_state["region"] is None:  # 使用者點掉「地區」可清空的 ×：沒有「兩者都不選」這個狀態，跳回全部地區
+        st.session_state["region"] = ALL_REGIONS
     st.session_state["city"] = ALL_CITIES  # 選地區 → 縣市回到「全部縣市」
 
 
