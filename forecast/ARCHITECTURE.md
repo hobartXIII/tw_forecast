@@ -138,9 +138,10 @@ flowchart TD
 | `frontend/repository.py` | `ForecastQuery`、`now_taipei` | 唯讀查詢：目前時段、未來預報、更新狀態、可選日期、指定日期；只取最新批次；不快取 |
 | `frontend/scope.py` | `Scope`、`add_region` | 地區與縣市的篩選範圍：顯示層級、範圍內縣市、依範圍篩資料、圖表用的多系列長表 |
 | `frontend/tables.py` | `make_table`、`next_periods` | 明細表格與「後續時段」的資料整理 |
-| `frontend/charts.py` | `SeriesChart` | 趨勢折線圖（monotone 曲線、圖例點選強調、門檻線、「現在」虛線）；單一縣市的三條溫度線合併 |
+| `frontend/charts.py` | `SeriesChart`、`configure_chart` | 趨勢折線圖（monotone 曲線、圖例點選強調、門檻線、「現在」虛線、淡虛線格線）；單一縣市的三條溫度線合併並加最低～最高溫的漸層溫度帶 |
 | `frontend/map_view.py` | `TemperatureMap` | Folium 地圖：溫度標記、提示框、圖例、被選縣市放大、雙指手勢 |
 | `frontend/temperature.py` | `band_index`、`colored`、`display_temp` | 氣溫級距與顏色，地圖、表格、摘要共用 |
+| `frontend/rain.py` | `RAIN_ALERT`、`rain_color` | 降雨告警門檻（60%）與降雨色階（淺藍 → 靛藍），趨勢圖與摘要卡片共用 |
 | `frontend/regions.py` | `REGIONS`、`region_of`、`cities_in` | 縣市 → 地區（北／中／南／東／離島）對照表 |
 | `frontend/formatting.py` | `weather_icon`、`is_night`、`format_*` | 天氣圖示與日夜判斷、時間與數值的顯示文字 |
 | `frontend/update_gate.py` | `Gate`、`evaluate`、`DispatchLog` | 「立即更新」是否可按：距上次成功滿 20 分鐘，且觸發後 5 分鐘內資料庫尚無新紀錄時鎖定；被間隔擋住時提供剩餘秒數給倒數用 |
@@ -154,7 +155,7 @@ flowchart TD
 | :--- | :--- | :--- |
 | `streamlit_app/app.py` | `main` | 入口；只負責依序串接各區塊，不含商業邏輯 |
 | `frontend/session.py` | `get_client`、`secret`、`dispatch_log` | 讀取 secrets、建立並快取 Supabase 連線、所有連線共用的觸發記錄 |
-| `frontend/style.py` | `inject`、`card` | 玻璃擬態 CSS（淺色／深色）與摘要卡片 HTML |
+| `frontend/style.py` | `inject`、`card` | 玻璃擬態 CSS（淺色／深色）與摘要卡片 HTML（頂端色帶、降雨進度條、進場與浮起動畫） |
 | `frontend/admin_ui.py` | `AdminPanel` | 告警設定視窗的內容與登入狀態（密碼只存在本次連線的記憶體、閒置 15 分鐘登出） |
 | `views/header.py` | `Header` | 標題列三顆按鈕（電腦並排、手機收進選單）與更新流程的提示 |
 | `views/filters.py` | `render_filters` | 地區與縣市互斥下拉選單 |

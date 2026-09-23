@@ -51,6 +51,8 @@ def test_default_page_renders_without_errors(app):
     assert [t.label for t in app.tabs] == ["📈 氣溫趨勢", "🌧️ 降雨機率", "📋 目前時段明細", "🕒 後續時段", "📅 日期查詢"]
     cards = [m.value for m in app.markdown if 'class="glass"' in m.value]
     assert len(cards) == 4 and "平均氣溫" in cards[0]
+    assert all("--accent:" in c for c in cards[1:3])  # 最高溫／最低溫卡片有級距色帶
+    assert 'class="meter"' in cards[3]  # 降雨機率卡片有進度條
     assert len(app.dataframe) == 2  # 目前時段明細（22 縣市）與後續時段
 
 

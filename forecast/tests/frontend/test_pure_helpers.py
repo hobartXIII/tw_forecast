@@ -1,11 +1,11 @@
-"""前端的小型純函式：地區對照、格式化、溫度級距、更新門檻。"""
+"""前端的小型純函式：地區對照、格式化、溫度級距、降雨色階、摘要卡片 HTML、更新門檻。"""
 import math
 from datetime import datetime, timedelta
 
 import pandas as pd
 import pytest
 
-from tw_forecast.frontend import formatting, regions, temperature, update_gate
+from tw_forecast.frontend import formatting, rain, regions, style, temperature, update_gate
 from tw_forecast.frontend.repository import TZ
 
 
@@ -75,6 +75,39 @@ def test_null_temperature_is_not_colored():
 def test_display_temp_falls_back_to_midpoint():
     df = pd.DataFrame({"avg_temp": [20.0, None], "min_temp": [10.0, 10.0], "max_temp": [30.0, 20.0]})
     assert temperature.display_temp(df).tolist() == [20.0, 15.0]
+
+
+# ---------- rain ----------
+@pytest.mark.parametrize("prob, band", [(0, 0), (29, 0), (30, 1), (59, 1), (60, 2), (100, 2)])
+def test_rain_color_bands(prob, band):
+    assert rain.rain_color(prob) == rain.RAIN_BANDS[band][1]
+
+
+def test_rain_alert_band_starts_at_alert_threshold():
+    assert rain.RAIN_BANDS[-1][0] == rain.RAIN_ALERT
+    assert rain.rain_color(None) == rain.rain_color(math.nan) == ""
+
+
+# ---------- style.card ----------
+def test_card_accent_delay_and_aside():
+    html = style.card("最高溫", "31 °C", "☀️ 晴", accent="#e03131", index=2)
+    assert 'class="glass"' in html and "--accent:#e03131" in html
+    assert f"--delay:{2 * style.CARD_STAGGER_MS}ms" in html
+    assert '<span class="aside">☀️ 晴</span>' in html and 'class="meter"' not in html
+
+
+def test_card_without_accent_has_no_accent_variable():
+    assert "--accent" not in style.card("平均氣溫", "—")
+
+
+@pytest.mark.parametrize("value, width", [(70, "70%"), (0, "0%"), (130, "100%"), (-5, "0%")])
+def test_card_meter_width_is_clamped(value, width):
+    assert f'style="width:{width}"' in style.card("降雨機率", "70 %", meter=value)
+
+
+def test_card_meter_omitted_for_missing_value():
+    assert 'class="meter"' not in style.card("降雨機率", "—", meter=None)
+    assert 'class="meter"' not in style.card("降雨機率", "—", meter=math.nan)
 
 
 # ---------- update_gate ----------

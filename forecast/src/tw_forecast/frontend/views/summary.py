@@ -2,6 +2,7 @@
 
 輸入：範圍內的「目前時段」資料（含 avg 欄位）與篩選範圍。輸出：畫面。
 單一縣市顯示該縣市自己的數值；其他範圍顯示平均與極值（並標出是哪個縣市）。
+卡片頂端色帶：溫度卡片依氣溫級距（與地圖標記同色），降雨卡片依降雨色階（淺藍 → 靛藍）並附進度條。
 """
 import pandas as pd
 import streamlit as st
@@ -9,7 +10,8 @@ import streamlit as st
 from tw_forecast.frontend.formatting import format_value, is_night, weather_icon
 from tw_forecast.frontend.scope import Scope
 from tw_forecast.frontend.style import card
-from tw_forecast.frontend.temperature import colored
+from tw_forecast.frontend.rain import rain_color
+from tw_forecast.frontend.temperature import colored, temp_color
 
 
 def _extreme(cur: pd.DataFrame, column: str, largest: bool) -> tuple[float | None, str]:
@@ -21,14 +23,17 @@ def _extreme(cur: pd.DataFrame, column: str, largest: bool) -> tuple[float | Non
     return row[column], row["location_name"]
 
 
-def _temp_card(col, label: str, value, fmt: str = ".0f", aside: str = "") -> None:
-    """玻璃卡片，數字依溫度級距上色（st.metric 的數值無法指定顏色）；aside 顯示在數值右側。"""
-    col.markdown(card(label, colored(value, format_value(value, "°C", fmt)), aside), unsafe_allow_html=True)
+def _temp_card(col, index: int, label: str, value, fmt: str = ".0f", aside: str = "") -> None:
+    """玻璃卡片，數字與頂端色帶依溫度級距上色（st.metric 的數值無法指定顏色）；aside 顯示在數值右側。"""
+    accent = "" if value is None or pd.isna(value) else temp_color(value)
+    col.markdown(card(label, colored(value, format_value(value, "°C", fmt)), aside, accent=accent, index=index),
+                 unsafe_allow_html=True)
 
 
-def _plain_card(col, label: str, value: str) -> None:
-    """與 _temp_card 同外觀的玻璃卡片，數字不上色（降雨機率）。"""
-    col.markdown(card(label, value), unsafe_allow_html=True)
+def _rain_card(col, index: int, label: str, value) -> None:
+    """降雨機率卡片：數字不上色，頂端色帶與進度條依降雨色階。"""
+    col.markdown(card(label, format_value(value, "%"), accent=rain_color(value), index=index, meter=value),
+                 unsafe_allow_html=True)
 
 
 def _with_city(label: str, name: str) -> str:
@@ -42,15 +47,15 @@ def render_summary(cur: pd.DataFrame, scope: Scope) -> None:
         crow = cur[cur["location_name"] == scope.city].iloc[0]
         weather = crow["weather_condition"] if isinstance(crow["weather_condition"], str) else "—"
         icon = weather_icon(weather, is_night(crow["forecast_time_start"], crow["forecast_time_end"]))
-        _temp_card(k1, f"{scope.city} 平均氣溫", crow["avg"], ".1f", f"{icon} {weather}".strip())
-        _temp_card(k2, "最高溫", crow["max_temp"])
-        _temp_card(k3, "最低溫", crow["min_temp"])
-        _plain_card(k4, "降雨機率", format_value(crow["rain_probability"], "%"))
+        _temp_card(k1, 0, f"{scope.city} 平均氣溫", crow["avg"], ".1f", f"{icon} {weather}".strip())
+        _temp_card(k2, 1, "最高溫", crow["max_temp"])
+        _temp_card(k3, 2, "最低溫", crow["min_temp"])
+        _rain_card(k4, 3, "降雨機率", crow["rain_probability"])
     else:
         hot, hot_city = _extreme(cur, "max_temp", True)
         cold, cold_city = _extreme(cur, "min_temp", False)
         wet, wet_city = _extreme(cur, "rain_probability", True)
-        _temp_card(k1, "平均氣溫", cur["avg"].mean(), ".1f")
-        _temp_card(k2, _with_city("最高溫", hot_city), hot)
-        _temp_card(k3, _with_city("最低溫", cold_city), cold)
-        _plain_card(k4, _with_city("最高降雨機率", wet_city), format_value(wet, "%"))
+        _temp_card(k1, 0, "平均氣溫", cur["avg"].mean(), ".1f")
+        _temp_card(k2, 1, _with_city("最高溫", hot_city), hot)
+        _temp_card(k3, 2, _with_city("最低溫", cold_city), cold)
+        _rain_card(k4, 3, _with_city("最高降雨機率", wet_city), wet)

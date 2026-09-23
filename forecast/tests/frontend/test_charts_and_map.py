@@ -7,8 +7,9 @@ import pandas as pd
 import pytest
 
 from fakes import forecast_rows
-from tw_forecast.frontend.charts import MISSING_TIP, RAIN_ALERT, SeriesChart
+from tw_forecast.frontend.charts import MISSING_TIP, SeriesChart
 from tw_forecast.frontend.map_view import TemperatureMap, legend_html, marker_html, tooltip_html
+from tw_forecast.frontend.rain import RAIN_ALERT
 from tw_forecast.frontend.repository import TZ, to_dataframe
 from tw_forecast.frontend.scope import add_region
 from tw_forecast.frontend.temperature import display_temp
@@ -61,6 +62,38 @@ def test_rain_chart_has_threshold_rule_fixed_domain_and_hollow_missing_points():
     assert len(points) == 2 and points[1]["mark"]["filled"] is False
     line = next(layer for layer in s["layer"] if layer["mark"]["type"] == "line")
     assert line["encoding"]["y"]["scale"]["domain"] == [0, 100]
+
+
+def temp_lines(highs, lows):
+    return pd.concat([long_frame(highs, "最高溫"), long_frame(lows, "最低溫")])
+
+
+def test_band_data_pairs_low_and_high_and_skips_missing():
+    chart = SeriesChart("氣溫", ["最高溫", "最低溫"], band=("最低溫", "最高溫"))
+    b = chart.band_data(chart.prepare(temp_lines([30.0, None, 28.0], [22.0, 21.0, 20.5])))
+    assert b["下緣"].tolist() == [22.0, 20.5] and b["上緣"].tolist() == [30.0, 28.0]
+    assert b["溫差"].tolist() == [8.0, 7.5]
+
+
+def test_band_layer_is_drawn_first_with_gradient():
+    s = spec(SeriesChart("氣溫", ["最高溫", "最低溫"], band=("最低溫", "最高溫")).build(
+        temp_lines([30.0, 29.0], [22.0, 21.0]), NOW))
+    area = s["layer"][0]
+    assert area["mark"]["type"] == "area" and area["mark"]["color"]["gradient"] == "linear"
+    assert area["encoding"]["y2"]["field"] == "上緣"
+
+
+def test_band_skipped_when_a_series_is_missing():
+    chart = SeriesChart("氣溫", ["最高溫"], band=("最低溫", "最高溫"))
+    s = spec(chart.build(long_frame([30.0, 29.0], "最高溫"), NOW))
+    assert not any(layer["mark"]["type"] == "area" for layer in s["layer"])
+
+
+def test_charts_share_transparent_background_dashed_grid_without_frame():
+    s = spec(SeriesChart("氣溫", ["臺北市"]).build(long_frame([20.0, 22.0]), NOW))
+    assert s["config"]["background"] == "transparent"
+    assert s["config"]["axis"]["gridDash"] == [2, 4] and s["config"]["view"]["strokeWidth"] == 0
+    assert not any(layer["mark"]["type"] == "area" for layer in s["layer"])  # 沒指定 band 就不畫
 
 
 def test_now_line_omitted_when_far_outside_range():
