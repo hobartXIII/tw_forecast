@@ -242,7 +242,7 @@ HW1/
    .venv\Scripts\Activate.ps1
    pip install -r ../requirements.txt
    ```
-2. 後端金鑰：複製 `.env.example` 為 `.env`，填入 `WEATHER_API_KEY`、`SUPABASE_URL`、`SUPABASE_KEY`（`service_role`）等值。`.env` 不會被 commit。
+2. 後端金鑰：複製 `.env.example` 為 `.env`，填入 `WEATHER_API_KEY`、`SUPABASE_URL`、`SUPABASE_KEY`（`service_role`）等值；要執行 `checks/check_rls.py`、`checks/check_admin_rpc.py` 再加填 `SUPABASE_ANON_KEY`（`anon`）。`.env` 不會被 commit。
 3. 驗證氣象署 API 並存下範例回應：
    ```powershell
    python checks/check_cwa_api.py            # 存到 samples/F-D0047-091.json（不會被 commit）

@@ -295,6 +295,7 @@ records.Locations[]                     ← 1 筆 (LocationsName "台灣"，Data
   WEATHER_API_KEY="CWA-XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX"
   SUPABASE_URL="https://your-project.supabase.co"
   SUPABASE_KEY="eyJhbGciOiJIUzI1NiIsIn..."   # service_role
+  SUPABASE_ANON_KEY="eyJhbGciOiJIUzI1NiIsIn..."   # anon（選填，只給 checks/ 的 RLS 檢查用）
   TELEGRAM_BOT_TOKEN="123456789:AAxxxxxxxx"
   TELEGRAM_CHAT_ID="123456789"
   ```
