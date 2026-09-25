@@ -118,6 +118,7 @@ def test_map_has_one_marker_per_city_legend_and_gesture_plugin(cur):
     html = html_of(TemperatureMap(cur).build())
     assert html.count("L.marker(") == 22
     assert "平均氣溫" in html and "gestureHandling" in html and "leaflet-gesture-handling.min.js" in html
+    assert '"duration": 1000' in html  # 少了 duration 提示會一出現就消失
 
 
 def test_map_skips_rows_without_coordinates_or_temperature(cur):

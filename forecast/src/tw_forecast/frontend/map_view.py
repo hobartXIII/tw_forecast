@@ -12,8 +12,9 @@ from tw_forecast.frontend.temperature import BANDS, band_index, colored, display
 # st_folium 只認元素的 default_js／default_css（不是 header），所以要登記到地圖物件上。
 GESTURE_JS = "https://cdn.jsdelivr.net/npm/leaflet-gesture-handling@1.2.2/dist/leaflet-gesture-handling.min.js"
 GESTURE_CSS = "https://cdn.jsdelivr.net/npm/leaflet-gesture-handling@1.2.2/dist/leaflet-gesture-handling.min.css"
+# duration 要一併給：這個物件會整個取代外掛的預設值，少了 duration 提示（如「按住 Ctrl…」）會一出現就消失
 GESTURE_OPTIONS = {"text": {"touch": "請用兩指移動地圖", "scroll": "按住 Ctrl 並滾動滾輪來縮放地圖",
-                            "scrollMac": "按住 ⌘ 並滾動滾輪來縮放地圖"}}
+                            "scrollMac": "按住 ⌘ 並滾動滾輪來縮放地圖"}, "duration": 1000}
 
 # 地圖底圖（OpenStreetMap）不論主題都是淺色，圖例與提示框固定用淺色玻璃
 GLASS_LIGHT = ("background:rgba(255,255,255,.72);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);"
