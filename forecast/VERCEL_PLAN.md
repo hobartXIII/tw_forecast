@@ -163,7 +163,7 @@ npm test                        # Vitest（不連網、不連資料庫）
 npm run build                   # 型別檢查 → 測試 → 打包（Vercel 建置時也跑這個）
 ```
 
-後端與 Streamlit 版的 Python 測試照舊：在 `forecast/` 建 `.venv`、`pip install -r ../requirements.txt -r requirements-dev.txt`（依 README），執行 `python -m pytest`。
+後端與 Streamlit 版的 Python 測試照舊：依 README 建 `.venv`，`pip install -r requirements.txt -r requirements-dev.txt`（兩個檔案都在 repo 根目錄），再到 `forecast/` 執行 `python -m pytest`。
 
 ### 注意事項
 
