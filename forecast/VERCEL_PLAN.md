@@ -4,7 +4,7 @@
 目前的前端架構見 [ARCHITECTURE.md](ARCHITECTURE.md)，需求與規格見 [SPECIFICATION.md](SPECIFICATION.md)。
 
 - **建立日期**：2026-09-25
-- **狀態**：階段 0 進行中（`web/` 骨架完成，本機已讀到資料庫；待接上 Vercel）
+- **狀態**：階段 0 完成（2026-09-25 Vercel 部署成功並讀到資料庫）；階段 1 完成（資料層與純函式移植，Vitest 85 項）；下一步階段 2
 
 ## 1. 已確定的決定
 
@@ -15,6 +15,8 @@
 | 分支 | 在 `main` 開發；Streamlit 版留在 `streamlit` 分支（Community Cloud 跟這個分支） | 兩邊並行，改 `main` 不影響線上 Streamlit |
 | 「立即更新」 | 只在 Vercel 版提供 | `streamlit` 分支已用 `update_gate.MANUAL_UPDATE_ENABLED = False` 關閉（v1.16.0） |
 | 後端、資料庫 | 不動 | GitHub Actions、`sql/init_supabase.sql`、RLS、RPC 維持原樣 |
+| 前端常數（溫度級距、降雨色階、地區分組等） | **直接搬到 TypeScript**，不做 JSON 共用 | 後端沒有匯入 `frontend/`，這些常數只有前端使用；移植後 TypeScript 是唯一版本，不需要同步 |
+| `main` 上的 Python 前端 | **凍結到階段 7 再刪除** | 移植期間留作對照、`pytest` 仍可證明其行為；不再修改（需要改 Streamlit 版時改 `streamlit` 分支）。階段 7 刪除 `src/tw_forecast/frontend/`、`streamlit_app/`、`tests/frontend/`、`.streamlit/` 與 Streamlit 相關套件 |
 
 ## 2. 目錄與部署
 
@@ -103,7 +105,6 @@ forecast/
 ## 6. 待討論
 
 - **告警設定的密碼保存方式（階段 5）**：RPC 每次讀寫都要帶密碼。最簡單的做法是登入後把密碼留在頁面記憶體（React state，不寫入 localStorage），閒置 15 分鐘或關閉頁面即清除，與 Streamlit 版「密碼只存在本次連線的記憶體」相當。若要讓瀏覽器完全不持有密碼，需要改由 Function 代為呼叫 RPC 並以加密的 `HttpOnly` cookie 保存登入狀態，複雜度較高。
-- **共用設定**：溫度級距、降雨色階、地區分組目前寫在 Python。要不要抽成一份 JSON 給前後端共用，或前端先各自複製一份。
 - **地圖圖磚**：目前用 OpenStreetMap 官方圖磚；若流量變大應改用正式的圖磚服務，並保留「© OpenStreetMap contributors」標示。
 - **資料更新後的頁面**：靜態頁每次載入都即時查 Supabase，資料更新後重新整理即可看到，不需要 ISR 或重新建置。
 
@@ -111,5 +112,5 @@ forecast/
 
 - 後端（`src/tw_forecast/backend/`、`scripts/`）、GitHub Actions 排程與 Telegram 告警完全不動。
 - 資料庫結構、RLS、RPC 不改；前端仍只用 `anon` 金鑰。
-- `main` 上的 Streamlit 前端程式碼在 Vercel 版上線前保留，之後再決定是否移除；`streamlit` 分支本來就有完整的一份。
+- `streamlit` 分支保留完整的 Streamlit 版，繼續部署於 Community Cloud。
 - 後端的 `pytest` 照舊，在 `forecast/` 執行 `python -m pytest`。
