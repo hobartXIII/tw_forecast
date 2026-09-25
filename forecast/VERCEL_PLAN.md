@@ -4,7 +4,7 @@
 目前的前端架構見 [ARCHITECTURE.md](ARCHITECTURE.md)，需求與規格見 [SPECIFICATION.md](SPECIFICATION.md)。
 
 - **建立日期**：2026-09-25
-- **狀態**：規劃完成，尚未開始實作
+- **狀態**：階段 0 進行中（`web/` 骨架完成，本機已讀到資料庫；待接上 Vercel）
 
 ## 1. 已確定的決定
 
