@@ -114,3 +114,60 @@ forecast/
 - 資料庫結構、RLS、RPC 不改；前端仍只用 `anon` 金鑰。
 - `streamlit` 分支保留完整的 Streamlit 版，繼續部署於 Community Cloud。
 - 後端的 `pytest` 照舊，在 `forecast/` 執行 `python -m pytest`。
+
+## 8. 交接與待辦（2026-09-25，換電腦續作用）
+
+### 目前進度
+
+| 階段 | 狀態 | commit |
+| :---: | :--- | :--- |
+| 0 骨架與 Vercel 部署 | ✅ 完成，Vercel 已讀到資料庫 | `68de723` |
+| 1 資料層與純函式 | ✅ 完成 | `b233df9` |
+| 2 唯讀畫面 | ✅ 完成 | `9eaced8` |
+| 3 地圖 | ✅ 完成 | `d0ca351` |
+| **4 視覺細修** | **⏭️ 下一步** | — |
+| 5 立即更新 | 未開始 | — |
+| 6 告警設定 | 未開始 | — |
+| 7 文件與切換 | 未開始 | — |
+
+`streamlit` 分支（Community Cloud 部署）：已關閉立即更新（v1.16.0，`0b15eea`）、修正地圖 Ctrl 提示一閃即逝（v1.16.1，`d071f90`）。
+
+### 下一步：階段 4 視覺細修
+
+- 把 Streamlit 版 `src/tw_forecast/frontend/style.py` 的 CSS 搬到 `web/src/styles/global.css`：
+  - 漸層背景加三個光暈（淺色：米白 → 天空藍；深色：純色底加彩色光暈）
+  - `.card`、`.panel` 改成玻璃（半透明、`backdrop-filter: blur`），卡片依 `--accent` 發光邊框
+  - 卡片進場淡入（依 `--delay` 錯開）、滑鼠移上浮起、降雨進度條由左長出；尊重 `prefers-reduced-motion`
+- 手機版：
+  - 趨勢圖圖例太長時最後一項被切掉（例如「離島地區」）→ 讓圖例換行或改用 `columns`
+  - 手機上點圖表資料點後，捲動時收起 Vega 提示框（Streamlit 版的 `TOOLTIP_JS`）
+- 完成條件：電腦與手機（390px）、淺色與深色都截圖確認
+
+### 之後的待辦
+
+- 階段 5「立即更新」：`api/update-status.ts`、`api/dispatch.ts`（見 §3），Vercel 需加 `SUPABASE_URL`、`SUPABASE_ANON_KEY`、`GH_REPO`、`GH_DISPATCH_TOKEN`（不可加 `VITE_` 前綴）；資料過期提示的文字（目前寫「請等待下次排程更新」）屆時改回「請按『立即更新』」
+- 階段 6 告警設定：先決定密碼保存方式（§6）
+- 使用者待辦：
+  - Streamlit Cloud 的 Secrets 可刪除 `GH_REPO`、`GH_DISPATCH_TOKEN`（token 本身保留，Vercel 版要用）
+  - 在 Streamlit 版電腦上確認「按住 Ctrl」提示會停留約 1 秒（v1.16.1）
+
+### 新電腦的環境設定
+
+```bash
+git clone https://github.com/hobartXIII/tw_forecast.git
+cd tw_forecast/forecast/web
+npm install
+cp .env.example .env.local      # 填入 VITE_SUPABASE_URL、VITE_SUPABASE_ANON_KEY（與 Streamlit secrets 相同的值）
+npm run dev                     # http://localhost:5173
+npm test                        # Vitest（不連網、不連資料庫）
+npm run build                   # 型別檢查 → 測試 → 打包（Vercel 建置時也跑這個）
+```
+
+後端與 Streamlit 版的 Python 測試照舊：在 `forecast/` 建 `.venv`、`pip install -r ../requirements.txt -r requirements-dev.txt`（依 README），執行 `python -m pytest`。
+
+### 注意事項
+
+- **在 `streamlit` 分支 commit 時不要用 `git add -A`**：`forecast/web/` 在該分支沒有被 `.gitignore` 排除，硬碟上的 `node_modules`、`dist`、`.env.local`（含金鑰）會被加進去。一律指定檔案路徑。
+- 在 `main` 上的 Python 前端（`src/tw_forecast/frontend/`、`streamlit_app/`）已凍結，不再修改；要改 Streamlit 版就到 `streamlit` 分支改。
+- Vercel 的環境變數改了之後要 Redeploy 才生效（`VITE_` 變數是建置時打包進去的）；值不要加引號、貼上前把輸入法切成英文。
+- 本機用 `npx vite` 起的開發伺服器，停止時要確認 5173 埠已釋放（背景工作被停止時子行程可能還在）。
