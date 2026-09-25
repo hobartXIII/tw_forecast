@@ -10,7 +10,7 @@ import pytest
 from streamlit.testing.v1 import AppTest
 
 from fakes import FakeClient, forecast_rows
-from tw_forecast.frontend import repository, session
+from tw_forecast.frontend import repository, session, update_gate
 from tw_forecast.frontend.repository import TZ
 from tw_forecast.frontend.update_gate import DispatchLog
 
@@ -20,8 +20,7 @@ STATUS = [{"trigger_type": "schedule", "last_success_at": "2026-09-21T09:30:00+0
           {"trigger_type": "manual", "last_success_at": "2026-09-21T08:00:00+08:00", "last_run_at": None}]
 
 
-@pytest.fixture
-def app(monkeypatch):
+def _run_app(monkeypatch):
     """固定時間、假資料庫、假 secrets；地圖元件不需要真的渲染。"""
     client = FakeClient({"weather_forecasts": forecast_rows(datetime(2026, 9, 20, 6, 0, tzinfo=TZ), days=4),
                          "pipeline_status": STATUS})
@@ -34,6 +33,19 @@ def app(monkeypatch):
     import streamlit_folium
     monkeypatch.setattr(streamlit_folium, "st_folium", lambda *a, **k: {})
     return AppTest.from_file(str(APP), default_timeout=120).run()
+
+
+@pytest.fixture
+def app(monkeypatch):
+    """目前的設定：立即更新關閉（只在 Vercel 版提供）。"""
+    return _run_app(monkeypatch)
+
+
+@pytest.fixture
+def update_app(monkeypatch):
+    """立即更新開啟（MANUAL_UPDATE_ENABLED = True），測試這條流程在重新開啟時仍正常。"""
+    monkeypatch.setattr(update_gate, "MANUAL_UPDATE_ENABLED", True)
+    return _run_app(monkeypatch)
 
 
 def spec_text(chart) -> str:
@@ -80,11 +92,32 @@ def test_tooltip_hiding_script_is_injected_with_javascript_allowed(app):
     assert len(scripts) == 1 and scripts[0].unsafe_allow_javascript
 
 
-def test_update_status_caption_and_allowed_button(app):
+def test_update_status_caption_and_allowed_button(update_app):
+    captions = [c.value for c in update_app.caption]
+    assert any("最近排程更新 09/21 09:30" in c and "最近手動更新 09/21 08:00" in c and "需間隔 20 分鐘" in c
+               for c in captions)
+    update = next(b for b in update_app.button if b.label == "🔄 立即更新")
+    assert not update.disabled  # 距上次更新已超過 20 分鐘
+
+
+def test_manual_update_disabled_hides_button_and_interval_text(app):
+    """關閉立即更新：電腦版與手機版都只剩「重新載入資料」「告警設定」，小字仍列出最近更新時間但不提間隔。"""
+    assert not app.exception
+    assert sorted(b.label for b in app.button) == ["♻️ 重新載入資料"] * 2 + ["⚙️ 告警設定"] * 2
     captions = [c.value for c in app.caption]
     assert any("最近排程更新 09/21 09:30" in c and "最近手動更新 09/21 08:00" in c for c in captions)
-    update = next(b for b in app.button if b.label == "🔄 立即更新")
-    assert not update.disabled  # 距上次更新已超過 20 分鐘
+    assert not any("需間隔" in c for c in captions)
+
+
+def test_manual_update_disabled_shows_no_countdown(app, monkeypatch):
+    """關閉立即更新時，距上次更新不滿 20 分鐘也不顯示倒數或「暫不開放」之類的提示。"""
+    recent = [{"trigger_type": "schedule", "last_success_at": "2026-09-21T09:54:00+08:00", "last_run_at": None}]
+    client = FakeClient({"weather_forecasts": forecast_rows(datetime(2026, 9, 20, 6, 0, tzinfo=TZ), days=4),
+                         "pipeline_status": recent})
+    monkeypatch.setattr(session, "get_client", lambda: client)
+    at = AppTest.from_file(str(APP), default_timeout=120).run()
+    assert not at.exception
+    assert not at.get("iframe") and not at.info
 
 
 def test_single_city_shows_combined_temperature_chart_and_no_metric_radio(app):
@@ -187,14 +220,14 @@ def test_empty_database_shows_warning(monkeypatch):
     assert any("資料庫目前沒有預報資料" in w.value for w in at.warning)
 
 
-def test_refresh_after_dispatch_keeps_update_button_disabled(app, monkeypatch):
+def test_refresh_after_dispatch_keeps_update_button_disabled(update_app, monkeypatch):
     """按下「立即更新」→ F5（全新連線）後，資料庫還沒更新，按鈕仍要維持停用。"""
     from tw_forecast.frontend import github_dispatch
     monkeypatch.setattr(github_dispatch.WorkflowDispatcher, "trigger", lambda self: (True, ""))
     monkeypatch.setattr(session, "secret", lambda name: "x")
-    next(b for b in app.button if b.label == "🔄 立即更新").click().run()
-    assert not app.exception
-    assert next(b for b in app.button if b.label == "⏳ 更新中…").disabled  # 同一連線：倒數中
+    next(b for b in update_app.button if b.label == "🔄 立即更新").click().run()
+    assert not update_app.exception
+    assert next(b for b in update_app.button if b.label == "⏳ 更新中…").disabled  # 同一連線：倒數中
 
     fresh = AppTest.from_file(str(APP), default_timeout=120).run()  # 模擬 F5：全新的連線
     button = next(b for b in fresh.button if b.label == "🔄 立即更新")
@@ -202,7 +235,7 @@ def test_refresh_after_dispatch_keeps_update_button_disabled(app, monkeypatch):
     assert any("已觸發更新" in i.value for i in fresh.info)
 
 
-def test_interval_block_shows_browser_countdown_instead_of_static_text(app, monkeypatch):
+def test_interval_block_shows_browser_countdown_instead_of_static_text(update_app, monkeypatch):
     """距上次成功更新不滿 20 分鐘：改用瀏覽器倒數（iframe），不再顯示靜態的「請約 N 分鐘後再試」。"""
     from tw_forecast.frontend import github_dispatch  # noqa: F401  確保模組已載入
     recent = [{"trigger_type": "schedule", "last_success_at": "2026-09-21T09:54:00+08:00", "last_run_at": None},

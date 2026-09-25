@@ -1,6 +1,8 @@
 """標題列的更新控制：立即更新、重新載入資料、告警設定三顆按鈕，以及更新流程的提示訊息。
 
 輸入：更新門檻判斷（Gate）、pipeline_status 的列、GitHub 觸發器。輸出：畫面元件，以及使用者按了哪些按鈕。
+update_gate.MANUAL_UPDATE_ENABLED 為 False 時（Streamlit 版目前的設定，立即更新只在 Vercel 版提供），
+不畫「立即更新」按鈕（只剩兩顆），也不觸發 workflow、不顯示倒數與更新提示。
 """
 import time
 from dataclasses import dataclass
@@ -8,7 +10,7 @@ from datetime import timedelta
 
 import streamlit as st
 
-from tw_forecast.frontend import session
+from tw_forecast.frontend import session, update_gate
 from tw_forecast.frontend.countdown import interval_countdown_html
 from tw_forecast.frontend.formatting import format_last_update
 from tw_forecast.frontend.github_dispatch import WorkflowDispatcher
@@ -64,22 +66,26 @@ class Header:
         self.counting = "refresh_at" in st.session_state  # 已觸發更新、正在倒數
 
     def _buttons(self, where, suffix: str) -> tuple[bool, bool, bool]:
-        """三顆按鈕。電腦版與手機版各畫一組（suffix 區分 key），由 style.py 的 CSS 依視窗寬度只顯示其中一組；
-        where 是放按鈕的位置（欄位、或手機版選單 popover 的內容區）。"""
-        update = where[0].button("⏳ 更新中…" if self.counting else "🔄 立即更新", key=f"update_{suffix}",
-                                 disabled=self.counting or not self.gate.allowed, width="stretch")
-        reload = where[1].button("♻️ 重新載入資料", key=f"reload_{suffix}", width="stretch")
-        admin = where[2].button("⚙️ 告警設定", key=f"admin_{suffix}", width="stretch",
+        """三顆按鈕（關閉立即更新時兩顆）。電腦版與手機版各畫一組（suffix 區分 key），由 style.py 的 CSS
+        依視窗寬度只顯示其中一組；where 是放按鈕的位置（欄位、或手機版選單 popover 的內容區）。"""
+        update = False
+        if update_gate.MANUAL_UPDATE_ENABLED:
+            update = where[0].button("⏳ 更新中…" if self.counting else "🔄 立即更新", key=f"update_{suffix}",
+                                     disabled=self.counting or not self.gate.allowed, width="stretch")
+            where = where[1:]
+        reload = where[0].button("♻️ 重新載入資料", key=f"reload_{suffix}", width="stretch")
+        admin = where[1].button("⚙️ 告警設定", key=f"admin_{suffix}", width="stretch",
                                 disabled=not self.configured)
         return update, reload, admin
 
     def render_controls(self) -> HeaderActions:
-        """畫按鈕（呼叫端要在放置按鈕的欄位 with 區塊內呼叫）：電腦版三顆並排，手機版收進漢堡選單。"""
+        """畫按鈕（呼叫端要在放置按鈕的欄位 with 區塊內呼叫）：電腦版並排，手機版收進漢堡選單。"""
+        count = 3 if update_gate.MANUAL_UPDATE_ENABLED else 2
         with st.container(key="hdr_desktop"):
-            up_d, reload_d, admin_d = self._buttons(st.columns(3), "d")
+            up_d, reload_d, admin_d = self._buttons(st.columns(count), "d")
         with st.container(key="hdr_mobile"):
             with st.popover("☰ 選單", width="stretch"):
-                up_m, reload_m, admin_m = self._buttons([st, st, st], "m")
+                up_m, reload_m, admin_m = self._buttons([st] * count, "m")
         return HeaderActions(up_d or up_m, reload_d or reload_m, admin_d or admin_m)
 
     def handle(self, actions: HeaderActions, status_rows: list[dict] | None) -> None:
@@ -89,6 +95,16 @@ class Header:
         """
         if actions.reload:
             st.rerun()
+        if update_gate.MANUAL_UPDATE_ENABLED:
+            self._handle_update(actions)
+        if status_rows is not None:
+            interval = (f"　｜　手動更新需間隔 {MIN_INTERVAL_MINUTES} 分鐘"
+                        if update_gate.MANUAL_UPDATE_ENABLED else "")
+            st.caption(f"最近排程更新 {format_last_update(status_rows, 'schedule')}　｜　"
+                       f"最近手動更新 {format_last_update(status_rows, 'manual')}{interval}")
+
+    def _handle_update(self, actions: HeaderActions) -> None:
+        """立即更新：觸發 workflow、倒數與更新結果的提示。"""
         if actions.update and self.gate.allowed:
             ok, msg = self.dispatcher.trigger()
             if ok:
@@ -112,8 +128,3 @@ class Header:
                 st.session_state.pop("pending_since")
             else:
                 st.info("更新尚未完成，請稍後按「重新載入資料」")
-
-        if status_rows is not None:
-            st.caption(f"最近排程更新 {format_last_update(status_rows, 'schedule')}　｜　"
-                       f"最近手動更新 {format_last_update(status_rows, 'manual')}"
-                       f"　｜　手動更新需間隔 {MIN_INTERVAL_MINUTES} 分鐘")

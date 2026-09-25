@@ -2,6 +2,7 @@
 import pandas as pd
 import streamlit as st
 
+from tw_forecast.frontend import update_gate
 from tw_forecast.frontend.charts import TEMP_LINE_COLORS, TEMP_LINE_COLUMNS, SeriesChart
 from tw_forecast.frontend.rain import RAIN_ALERT
 from tw_forecast.frontend.scope import Scope
@@ -12,7 +13,7 @@ TEMP_METRICS = {"最高溫": "max_temp", "最低溫": "min_temp", "平均溫": "
 def render_temperature_tab(scope: Scope, fc: pd.DataFrame | None, now) -> None:
     """氣溫趨勢。單一縣市：最高／平均／最低三條線在同一張圖；地區與全台：單選鈕選一個指標，每個系列一條線。"""
     if fc is None:
-        st.info("沒有未來預報資料（資料可能已過期），請按「立即更新」。")
+        st.info(f"沒有未來預報資料（資料可能已過期），{update_gate.stale_hint()}。")
         return
     if scope.level == "city":
         st.caption(f"{scope.label}｜最高溫、平均溫、最低溫｜色帶為最低～最高溫的範圍，點圖例可強調單一線條，虛線為現在")

@@ -144,7 +144,7 @@ flowchart TD
 | `frontend/rain.py` | `RAIN_ALERT`、`rain_color` | 降雨告警門檻（60%）與降雨色階（淺藍 → 靛藍），趨勢圖與摘要卡片共用 |
 | `frontend/regions.py` | `REGIONS`、`region_of`、`cities_in` | 縣市 → 地區（北／中／南／東／離島）對照表 |
 | `frontend/formatting.py` | `weather_icon`、`is_night`、`format_*` | 天氣圖示與日夜判斷、時間與數值的顯示文字 |
-| `frontend/update_gate.py` | `Gate`、`evaluate`、`DispatchLog` | 「立即更新」是否可按：距上次成功滿 20 分鐘，且觸發後 5 分鐘內資料庫尚無新紀錄時鎖定；被間隔擋住時提供剩餘秒數給倒數用 |
+| `frontend/update_gate.py` | `MANUAL_UPDATE_ENABLED`、`Gate`、`evaluate`、`DispatchLog`、`stale_hint` | 開關 `MANUAL_UPDATE_ENABLED`（Streamlit 版目前為 `False`，立即更新只在 Vercel 版提供）；「立即更新」是否可按：距上次成功滿 20 分鐘，且觸發後 5 分鐘內資料庫尚無新紀錄時鎖定；被間隔擋住時提供剩餘秒數給倒數用 |
 | `frontend/countdown.py` | `interval_countdown_html`、`format_mmss` | 瀏覽器端倒數的 HTML（純函式）：「已過 X 分鐘」與「還需 mm:ss」都由瀏覽器從同一個剩餘秒數推導、每 250ms 一起更新，伺服器不必每秒重跑 |
 | `frontend/github_dispatch.py` | `WorkflowDispatcher` | 呼叫 GitHub API 觸發後端 workflow |
 | `frontend/admin.py` | `AlertSettingsService`、`validate`、`build_payload` | 告警設定的資料層：經資料庫函式讀寫、儲存前驗證、錯誤訊息遮蔽密碼 |
@@ -247,6 +247,7 @@ flowchart TD
 | 調整圖表外觀、高度、顏色 | `frontend/charts.py` |
 | 調整地圖標記、提示框或手勢 | `frontend/map_view.py` |
 | 新增／調整一個頁面分頁 | 在 `views/` 新增畫面函式，於 `views/tabs.py` 掛上 |
+| 開啟／關閉「立即更新」 | `frontend/update_gate.py` 的 `MANUAL_UPDATE_ENABLED` |
 | 更改「立即更新」的間隔或鎖定時間 | `frontend/update_gate.py` 的 `MIN_INTERVAL_MINUTES`／`DISPATCH_LOCK_MINUTES` |
 | 更改視覺主題或玻璃效果 | `frontend/style.py` 與 `.streamlit/config.toml` |
 | 新增縣市分區或改分區方式 | `frontend/regions.py` |

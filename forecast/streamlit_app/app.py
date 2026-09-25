@@ -52,7 +52,7 @@ def main() -> None:
     gate = update_gate.evaluate(status_rows, session.now_taipei(), dispatched_at=log.last)
     dispatcher = WorkflowDispatcher(session.secret("GH_REPO"), session.secret("GH_DISPATCH_TOKEN"))
     header = Header(gate, configured, dispatcher, log)
-    with head_right:  # [B] 立即更新／重新載入資料／告警設定 三顆按鈕（畫面右上）
+    with head_right:  # [B] 立即更新（update_gate.MANUAL_UPDATE_ENABLED 關閉時不顯示）／重新載入資料／告警設定（畫面右上）
         actions = header.render_controls()
     header.handle(actions, status_rows)  # [C] 更新提示、倒數、「最近排程更新…」小字
 
@@ -93,7 +93,7 @@ def main() -> None:
     st.caption(f"預報時段 **{format_range(start, end)}**　｜　資料更新 **{cur['updated_at'].max():%m/%d %H:%M}**"
                "　｜　時間皆為台灣時間")
     if not start <= now < end:
-        st.warning("目前沒有涵蓋此刻的預報時段，顯示的是最接近的時段。資料可能已過期，可按「立即更新」。")
+        st.warning(f"目前沒有涵蓋此刻的預報時段，顯示的是最接近的時段。資料可能已過期，{update_gate.stale_hint()}。")
 
     # ---------- [F] 摘要卡片、[G] 地圖、[H] 分頁 ----------
     render_summary(cur, scope)  # [F] 四張摘要卡片

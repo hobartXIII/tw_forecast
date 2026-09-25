@@ -118,6 +118,13 @@ def status(minutes_ago):
     return {"last_success_at": pd.Timestamp(NOW - timedelta(minutes=minutes_ago))}
 
 
+def test_stale_hint_follows_manual_update_switch(monkeypatch):
+    monkeypatch.setattr(update_gate, "MANUAL_UPDATE_ENABLED", False)
+    assert "立即更新" not in update_gate.stale_hint() and "排程" in update_gate.stale_hint()
+    monkeypatch.setattr(update_gate, "MANUAL_UPDATE_ENABLED", True)
+    assert update_gate.stale_hint() == "請按「立即更新」"
+
+
 def test_unknown_status_blocks():
     for rows in (None, []):
         gate = update_gate.evaluate(rows, NOW)

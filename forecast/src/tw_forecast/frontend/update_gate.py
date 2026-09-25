@@ -18,10 +18,16 @@ from datetime import datetime, timedelta
 
 import pandas as pd
 
+MANUAL_UPDATE_ENABLED = False  # 「立即更新」只在 Vercel 版提供；Streamlit 版關閉（按鈕不顯示、不觸發 workflow）
 MIN_INTERVAL_MINUTES = 20
 DISPATCH_LOCK_MINUTES = 5  # 觸發後最多鎖這麼久；workflow 失敗時不會一直鎖住
 UNKNOWN_MESSAGE = "無法確認最後更新時間，暫不開放手動更新"
 IN_PROGRESS_MESSAGE = "已觸發更新，正在等待完成，請稍後按「重新載入資料」"
+
+
+def stale_hint() -> str:
+    """資料過期時的引導文字：有「立即更新」就請使用者按，沒有就請等排程。"""
+    return "請按「立即更新」" if MANUAL_UPDATE_ENABLED else "請等待下次排程更新（每 3 小時一次）"
 
 
 class DispatchLog:

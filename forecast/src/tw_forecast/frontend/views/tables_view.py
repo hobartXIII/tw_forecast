@@ -2,6 +2,7 @@
 import pandas as pd
 import streamlit as st
 
+from tw_forecast.frontend import update_gate
 from tw_forecast.frontend.scope import Scope
 from tw_forecast.frontend.tables import make_table, next_periods
 from tw_forecast.frontend.temperature import text_color
@@ -29,7 +30,7 @@ def render_table_tab(scope: Scope, cur: pd.DataFrame, fc: pd.DataFrame | None) -
     if scope.city:
         st.caption(f"{scope.city}｜未來一週的預報（每個時段約 12 小時）")
         if fc is None:
-            st.info("沒有未來預報資料（資料可能已過期），請按「立即更新」。")
+            st.info(f"沒有未來預報資料（資料可能已過期），{update_gate.stale_hint()}。")
         else:
             show_table(make_table(fc.sort_values("forecast_time_start"), dated=True), scope.table_drop_columns())
     else:
@@ -41,6 +42,6 @@ def render_next_tab(scope: Scope, fc: pd.DataFrame | None, after: pd.Timestamp) 
     st.caption("每個縣市「目前時段」之後的 2 個時段（依縣市、時間排序）")
     later = next_periods(fc, after) if fc is not None else None
     if later is None or later.empty:
-        st.info("沒有後續時段的預報資料（資料可能已過期），請按「立即更新」。")
+        st.info(f"沒有後續時段的預報資料（資料可能已過期），{update_gate.stale_hint()}。")
     else:
         show_table(make_table(later, dated=True), scope.table_drop_columns())
