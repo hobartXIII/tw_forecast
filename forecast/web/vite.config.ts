@@ -4,5 +4,5 @@ import { defineConfig } from "vite";
 
 export default defineConfig({
   plugins: [react()],
-  test: { include: ["tests/**/*.test.ts"], setupFiles: ["tests/setup.ts"] },
+  test: { include: ["tests/**/*.test.{ts,tsx}"], setupFiles: ["tests/setup.ts"] },
 });

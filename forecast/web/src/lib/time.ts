@@ -58,3 +58,20 @@ export function dayStart(key: string): Date {
 export function addDays(key: string, days: number): string {
   return dateKey(new Date(dayStart(key).getTime() + days * DAY_MS));
 }
+
+/** 台灣「牆上時間」、不帶時區的 ISO 字串，如 "2026-09-21T06:00:00"。
+
+給圖表用：Vega 會把不帶時區的時間當成瀏覽器本地時間直接顯示，所以任何時區的訪客看到的都是台灣時間。
+*/
+export function wallTime(d: Date): string {
+  const p = taipeiParts(d);
+  return `${dateKey(d)}T${pad(p.hour)}:${pad(p.minute)}:00`;
+}
+
+const WEEKDAYS = "日一二三四五六";
+
+/** 日期選單的文字，如「2026-09-21（週一）」；today 為今天的台灣日期時加上「　今天」。 */
+export function dateLabel(key: string, today?: string): string {
+  const weekday = WEEKDAYS[new Date(`${key}T12:00:00+08:00`).getUTCDay()];
+  return `${key}（週${weekday}）${key === today ? "　今天" : ""}`;
+}
