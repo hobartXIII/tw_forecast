@@ -176,4 +176,5 @@ st.page_link("report.py", label="報表")
 - **測試**：在 `forecast/` 執行 `python -m pytest`（不連網、不連資料庫）。新功能同時補測試；純函式寫單元測試，畫面流程用 `tests/frontend/test_app_smoke.py` 的 `AppTest`。需要真實連線的檢查放 `forecast/checks/`，維運工具放 `forecast/tools/`。
 - **改 `src/` 後要重啟 `streamlit run`**，否則可能沿用舊模組而出現 `ImportError`。
 - **前端只能用 `anon` 金鑰**；金鑰與密碼不可進程式碼、日誌或錯誤訊息（用 `mask_secrets`／`translate_error` 遮蔽）。
-- **分支**：重構前的版本保留在 `old` 分支。
+- **分支**：重構前的版本保留在 `old` 分支；`streamlit` 分支是 Community Cloud 部署的 Streamlit 版（已關閉「立即更新」）。
+- **Vercel 改寫**：在 `main` 進行，規劃與決定見 `forecast/VERCEL_PLAN.md`。

@@ -187,6 +187,8 @@
 
 ### 5.3 改寫部署到 Vercel 的建議
 
+> 實際採用的方案已另外整理在 [VERCEL_PLAN.md](VERCEL_PLAN.md)：框架改用 Vite + React（而非下面第 1 點的 Next.js），「觸發後鎖定」改查 GitHub workflow runs（而非第 3 點的資料庫欄位）。以下保留為當初的評估。
+
 1. **框架**：Next.js（App Router）＋ TypeScript，用 `@supabase/supabase-js` 讀資料。`anon` key 放在 `NEXT_PUBLIC_SUPABASE_URL`、`NEXT_PUBLIC_SUPABASE_ANON_KEY`；`GH_REPO`、`GH_DISPATCH_TOKEN` 只設成伺服器端環境變數（不加 `NEXT_PUBLIC_` 前綴）。Supabase 的 RLS 與 RPC 不用改。
 2. **資料更新**：預報頁用 ISR 定時重建。更好的做法是在 `fetch_and_store.py` 成功寫入後，呼叫 Vercel 的重新驗證 API（帶密鑰），資料一更新頁面就重建，不必等下一次定時。
 3. **「立即更新」**：改成 Route Handler 呼叫 GitHub API。20 分鐘間隔已經是依資料庫 `pipeline_status` 的最後成功時間判斷，可直接沿用。需要調整的是「觸發後 5 分鐘鎖定」：它用的觸發時間（按下按鈕到 workflow 寫入成功紀錄之間的空窗）目前只存在伺服器記憶體（`DispatchLog`），Vercel 的 Function 不保留記憶體，要改存到 Supabase（例如在 `pipeline_status` 加一個 `last_dispatched_at` 欄位，由 Route Handler 透過專用的 RPC 函式寫入，前端仍只用 `anon` key、不放 `service_role`），才能跨 Function 共用，也順便解決目前「app 重啟就清掉觸發紀錄」的問題。
