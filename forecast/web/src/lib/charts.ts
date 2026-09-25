@@ -114,7 +114,7 @@ export function seriesChartSpec(
   const yScale = { zero: opts.zero ?? false, ...(hasThreshold ? { domain: [0, 100] } : {}) };
   const y = { field: "值", type: "quantitative", title: opts.yTitle, scale: yScale } as const;
   const opacity = { condition: { param: "select", value: 1 }, value: 0.15 };
-  const seriesColor = { field: "系列", type: "nominal", scale, legend: null } as const;
+  const seriesColor = { field: "系列", type: "nominal", scale } as const; // 與折線共用同一個比例尺，圖例會合併成一個
   const tooltip = [
     { field: "系列", type: "nominal" },
     { field: "時段", type: "temporal", format: "%m/%d %H:%M" },

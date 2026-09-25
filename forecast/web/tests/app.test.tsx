@@ -20,6 +20,11 @@ vi.mock("../src/lib/supabase", async () => {
 vi.mock("../src/components/VegaChart", () => ({
   VegaChart: ({ spec }: { spec: object }) => <div data-testid="chart">{JSON.stringify(spec)}</div>,
 }));
+vi.mock("../src/components/TemperatureMap", () => ({ // jsdom 不能真的畫 Leaflet，只記錄收到的參數
+  TemperatureMap: ({ cur, level, highlight }: { cur: { location_name: string }[]; level: string; highlight: string | null }) => (
+    <div data-testid="map" data-level={level} data-highlight={highlight ?? ""}>{cur.map((r) => r.location_name).join(",")}</div>
+  ),
+}));
 
 import App from "../src/App";
 
@@ -50,6 +55,21 @@ describe("App", () => {
     expect(screen.getAllByTestId("chart")).toHaveLength(1);
     expect(screen.getByText(/預報時段/).textContent).toContain("09/21 06:00 ~ 09/21 18:00");
     expect(screen.queryByText(/目前沒有涵蓋此刻/)).toBeNull();
+    expect(screen.getByTestId("map").textContent!.split(",")).toHaveLength(22);
+    expect(screen.getByText("🗺️ 平均氣溫地圖")).toBeTruthy();
+  });
+
+  it("地圖：選地區只顯示該地區；選縣市時顯示所屬地區並標出被選縣市", async () => {
+    render(<App />);
+    await screen.findAllByRole("tab");
+    fireEvent.change(select("地區"), { target: { value: "東部地區" } });
+    expect(screen.getByTestId("map").textContent).toBe("宜蘭縣,花蓮縣,臺東縣");
+    expect(screen.getByTestId("map").dataset.level).toBe("region");
+    fireEvent.change(select("縣市"), { target: { value: "臺中市" } });
+    const map = screen.getByTestId("map");
+    expect(map.textContent).toBe("苗栗縣,臺中市,彰化縣,南投縣,雲林縣");
+    expect(map.dataset.highlight).toBe("臺中市");
+    expect(screen.getByText(/其餘中部地區縣市淡化作為對照/)).toBeTruthy();
   });
 
   it("選縣市：地區顯示「已選縣市」、四個分頁、三條線合併的氣溫圖、網址帶縣市", async () => {

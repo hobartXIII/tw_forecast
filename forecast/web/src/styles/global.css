@@ -1,5 +1,5 @@
 /* 全域樣式：淺色／深色跟著系統設定。顏色沿用 Streamlit 版 .streamlit/config.toml 的主題。
-   玻璃擬態、進場動畫等視覺細修在階段 6 加入；這裡先把版面與可讀性做好。 */
+   玻璃擬態、進場動畫等視覺細修在階段 4 加入；這裡先把版面與可讀性做好。 */
 :root {
   --bg: #f7f5f0;
   --surface: #ffffff;
@@ -138,6 +138,27 @@ select {
   color: var(--text);
 }
 .chart { width: 100%; }
+
+/* ---- 地圖 ---- */
+.map-panel { margin-bottom: 16px; }
+.panel h2 { margin: 0 0 4px; font-size: 1.25rem; }
+.map-wrap { position: relative; border-radius: 12px; overflow: hidden; }
+.map { width: 100%; height: 100%; }
+.temp-marker { background: none; border: none; }
+/* 底圖（OpenStreetMap）不論主題都是淺色，圖例與提示框固定用淺色玻璃 */
+.map-legend, .leaflet-tooltip.map-tooltip {
+  background: rgba(255, 255, 255, 0.72);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  border-radius: 12px;
+  box-shadow: 0 6px 20px rgba(60, 50, 30, 0.22);
+  color: #222;
+}
+.map-legend { position: absolute; left: 12px; bottom: 24px; z-index: 1000; padding: 8px 12px; font-size: 12px; line-height: 1.6; }
+.legend-dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 6px; vertical-align: -1px; }
+.leaflet-tooltip.map-tooltip { padding: 8px 12px; font-size: 13px; line-height: 1.5; }
+.leaflet-tooltip.map-tooltip::before { display: none; }
 
 /* ---- 表格 ---- */
 .table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 10px; }

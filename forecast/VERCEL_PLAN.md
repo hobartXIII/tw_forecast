@@ -4,7 +4,7 @@
 目前的前端架構見 [ARCHITECTURE.md](ARCHITECTURE.md)，需求與規格見 [SPECIFICATION.md](SPECIFICATION.md)。
 
 - **建立日期**：2026-09-25
-- **狀態**：階段 0 完成（2026-09-25 Vercel 部署成功並讀到資料庫）；階段 1 完成（資料層與純函式移植）；階段 2 完成（唯讀畫面，Vitest 118 項）；下一步階段 3
+- **狀態**：階段 0 完成（2026-09-25 Vercel 部署成功並讀到資料庫）；階段 1 完成（資料層與純函式移植）；階段 2 完成（唯讀畫面）；階段 3 完成（地圖，Vitest 129 項）；下一步階段 4（視覺細修）
 
 ## 1. 已確定的決定
 
@@ -89,7 +89,7 @@ forecast/
 
 ## 5. 分階段進行
 
-每個階段完成後先確認，再進下一階段。
+每個階段完成後先確認，再進下一階段。視覺細修原本排在最後，2026-09-25 提前到地圖之後（階段 4），讓立即更新與告警設定直接沿用同一套樣式。
 
 | 階段 | 內容 | 對應原模組 | 完成條件 |
 | :---: | :--- | :--- | :--- |
@@ -97,14 +97,14 @@ forecast/
 | 1 | 資料層與純函式移植，並補 Vitest | `repository`、`scope`、`tables`、`temperature`、`rain`、`regions`、`formatting`、`update_gate`、`countdown` | 單元測試涵蓋原本 pytest 的案例 |
 | 2 | 唯讀畫面：標題、地區／縣市篩選、摘要卡片、五個分頁（趨勢、降雨、明細、後續時段、日期查詢） | `views/` 大部分、`charts.py`、`tables.py` | 與 Streamlit 版逐項對照一致 |
 | 3 | 地圖 | `map_view.py`、`map_section.py` | 標記、提示框、圖例、被選縣市放大、手機雙指手勢 |
-| 4 | 「立即更新」：`api/update-status.ts`、`api/dispatch.ts`、按鈕與倒數 | `github_dispatch.py`、`update_gate.py`、`views/header.py` | 實際觸發一次並驗證鎖定與倒數 |
-| 5 | 告警設定：登入視窗與設定視窗 | `admin.py`、`admin_ui.py`、`views/admin_dialogs.py` | 以真實密碼登入並儲存成功 |
-| 6 | 視覺細修：玻璃擬態、深色模式、手機版（選單、滑動收起提示框、下拉不跳鍵盤） | `style.py` | 電腦與手機、淺色與深色截圖確認 |
+| 4 | 視覺細修：玻璃擬態、漸層背景、卡片發光與動畫、深色模式、手機版（選單、滑動收起提示框、圖例不被切掉） | `style.py` | 電腦與手機、淺色與深色截圖確認 |
+| 5 | 「立即更新」：`api/update-status.ts`、`api/dispatch.ts`、按鈕與倒數 | `github_dispatch.py`、`update_gate.py`、`views/header.py` | 實際觸發一次並驗證鎖定與倒數 |
+| 6 | 告警設定：登入視窗與設定視窗 | `admin.py`、`admin_ui.py`、`views/admin_dialogs.py` | 以真實密碼登入並儲存成功 |
 | 7 | 文件更新與切換 | — | ARCHITECTURE、SPEC、README、CLAUDE.md 反映新前端；決定正式入口 |
 
 ## 6. 待討論
 
-- **告警設定的密碼保存方式（階段 5）**：RPC 每次讀寫都要帶密碼。最簡單的做法是登入後把密碼留在頁面記憶體（React state，不寫入 localStorage），閒置 15 分鐘或關閉頁面即清除，與 Streamlit 版「密碼只存在本次連線的記憶體」相當。若要讓瀏覽器完全不持有密碼，需要改由 Function 代為呼叫 RPC 並以加密的 `HttpOnly` cookie 保存登入狀態，複雜度較高。
+- **告警設定的密碼保存方式（階段 6）**：RPC 每次讀寫都要帶密碼。最簡單的做法是登入後把密碼留在頁面記憶體（React state，不寫入 localStorage），閒置 15 分鐘或關閉頁面即清除，與 Streamlit 版「密碼只存在本次連線的記憶體」相當。若要讓瀏覽器完全不持有密碼，需要改由 Function 代為呼叫 RPC 並以加密的 `HttpOnly` cookie 保存登入狀態，複雜度較高。
 - **地圖圖磚**：目前用 OpenStreetMap 官方圖磚；若流量變大應改用正式的圖磚服務，並保留「© OpenStreetMap contributors」標示。
 - **資料更新後的頁面**：靜態頁每次載入都即時查 Supabase，資料更新後重新整理即可看到，不需要 ISR 或重新建置。
 

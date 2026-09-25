@@ -1,13 +1,14 @@
 /** 儀表板（對應 Streamlit 版的 streamlit_app/app.py）。
 
 由上而下：[A] 標題與按鈕、[C] 最近更新時間、[D] 地區／縣市篩選、[E] 預報時段與過期警示、
-[F] 摘要卡片、[H] 分頁。[G] 地圖在階段 3 加入。
+[F] 摘要卡片、[G] 地圖、[H] 分頁。
 資料在載入頁面與按「重新載入資料」時從 Supabase 重新查詢（不快取）；篩選只在瀏覽器端重新整理資料，不重新查詢。
 */
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { DateQueryTab } from "./components/DateQueryTab";
 import { Filters } from "./components/Filters";
+import { MapSection } from "./components/MapSection";
 import { Notice } from "./components/Notice";
 import { SummaryCards } from "./components/SummaryCards";
 import { NextTab, TableTab } from "./components/TableTabs";
@@ -128,6 +129,7 @@ function Dashboard({ loaded, scope, onScopeChange, query }: {
           </Notice>
         )}
         <SummaryCards cards={summaryCards(cur, scope)} />{/* [F] */}
+        <MapSection cur={cur} scope={scope} />{/* [G] */}
         <section className="panel"><Tabs items={tabs} /></section>{/* [H] */}
       </>
     );
