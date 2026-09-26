@@ -4,7 +4,7 @@
 目前的前端架構見 [ARCHITECTURE.md](ARCHITECTURE.md)，需求與規格見 [SPECIFICATION.md](SPECIFICATION.md)。
 
 - **建立日期**：2026-09-25
-- **狀態**：階段 0 完成（2026-09-25 Vercel 部署成功並讀到資料庫）；階段 1 完成（資料層與純函式移植）；階段 2 完成（唯讀畫面）；階段 3 完成（地圖，Vitest 129 項）；下一步階段 4（視覺細修）
+- **狀態**：階段 0 完成（2026-09-25 Vercel 部署成功並讀到資料庫）；階段 1 完成（資料層與純函式移植）；階段 2 完成（唯讀畫面）；階段 3 完成（地圖）；階段 4 完成（視覺細修，Vitest 132 項）；下一步階段 5（立即更新）
 
 ## 1. 已確定的決定
 
@@ -125,23 +125,18 @@ forecast/
 | 1 資料層與純函式 | ✅ 完成 | `b233df9` |
 | 2 唯讀畫面 | ✅ 完成 | `9eaced8` |
 | 3 地圖 | ✅ 完成 | `d0ca351` |
-| **4 視覺細修** | **⏭️ 下一步** | — |
-| 5 立即更新 | 未開始 | — |
+| 4 視覺細修 | ✅ 完成 | 見 git log |
+| **5 立即更新** | **⏭️ 進行中** | — |
 | 6 告警設定 | 未開始 | — |
 | 7 文件與切換 | 未開始 | — |
 
 `streamlit` 分支（Community Cloud 部署）：已關閉立即更新（v1.16.0，`0b15eea`）、修正地圖 Ctrl 提示一閃即逝（v1.16.1，`d071f90`）。
 
-### 下一步：階段 4 視覺細修
+### 階段 4 視覺細修（完成）
 
-- 把 Streamlit 版 `src/tw_forecast/frontend/style.py` 的 CSS 搬到 `web/src/styles/global.css`：
-  - 漸層背景加三個光暈（淺色：米白 → 天空藍；深色：純色底加彩色光暈）
-  - `.card`、`.panel` 改成玻璃（半透明、`backdrop-filter: blur`），卡片依 `--accent` 發光邊框
-  - 卡片進場淡入（依 `--delay` 錯開）、滑鼠移上浮起、降雨進度條由左長出；尊重 `prefers-reduced-motion`
-- 手機版：
-  - 趨勢圖圖例太長時最後一項被切掉（例如「離島地區」）→ 讓圖例換行或改用 `columns`
-  - 手機上點圖表資料點後，捲動時收起 Vega 提示框（Streamlit 版的 `TOOLTIP_JS`）
-- 完成條件：電腦與手機（390px）、淺色與深色都截圖確認
+- `web/src/styles/global.css` 沿用 `style.py`：漸層背景與三個光暈（放在 `body::before`，iOS 不支援 `background-attachment: fixed`）、玻璃卡片與面板、卡片發光邊框、進場淡入、浮起、進度條長出；尊重 `prefers-reduced-motion`；滑鼠移上的效果只在 `(hover: hover)` 的裝置套用
+- 手機：圖例每列最多 3 項（`seriesChartSpec` 的 `legendColumns`）；捲動或滑動時收起 Vega 提示框（`lib/tooltipAutoHide.ts`）
+- 手機版的「☰ 選單」等到階段 5 標題列有多顆按鈕時再加
 
 ### 之後的待辦
 

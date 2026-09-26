@@ -43,6 +43,15 @@ describe("seriesChartSpec", () => {
     expect(ofType(spec.layer, "rule")).toHaveLength(1);
   });
 
+  it("圖例：預設排成一列；legendColumns 限制每列項數（不超過系列數）", () => {
+    const legend = (opts: Partial<SeriesChartOptions>, order: string[]) =>
+      ofType(layers({ yTitle: "氣溫", order, ...opts }, series([20, 22])), "line")[0].encoding.color.legend;
+    const five = ["北部地區", "中部地區", "南部地區", "東部地區", "離島地區"];
+    expect(legend({}, five).columns).toBeUndefined();
+    expect(legend({ legendColumns: 3 }, five).columns).toBe(3);
+    expect(legend({ legendColumns: 3 }, ["臺北市", "新北市"]).columns).toBe(2);
+  });
+
   it("「現在」不在資料範圍內就不畫虛線", () => {
     expect(ofType(layers({ yTitle: "氣溫", order: ["臺北市"] }, series([20, 22]), tw(2026, 10, 30)), "rule")).toHaveLength(0);
   });

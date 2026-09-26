@@ -48,6 +48,8 @@ export interface SeriesChartOptions {
   colors?: string[];
   /** (下緣系列, 上緣系列)：在兩系列之間畫漸層溫度帶（只畫兩者都有值的時段）。 */
   band?: [string, string];
+  /** 圖例每列最多幾項（手機用，避免一列放不下時最後一項被切掉）；沒給就排成一列。 */
+  legendColumns?: number;
 }
 
 export interface PreparedPoint {
@@ -143,7 +145,9 @@ export function seriesChartSpec(
     data: { values: points },
     params: [{ name: "select", select: { type: "point", fields: ["系列"] }, bind: "legend" }],
     mark: { type: "line", strokeWidth: 2.5, strokeJoin: "round", interpolate: "monotone" },
-    encoding: { x, y, opacity, color: { field: "系列", type: "nominal", scale, legend: { title: null, orient: "top" } } },
+    encoding: { x, y, opacity, color: { field: "系列", type: "nominal", scale, legend: {
+      title: null, orient: "top", ...(opts.legendColumns ? { columns: Math.min(opts.legendColumns, opts.order.length) } : {}),
+    } } },
   });
   layers.push({
     data: { values: real },
