@@ -23,10 +23,10 @@
   --glass-border: rgba(255, 255, 255, 0.75);
   --glass-shadow: rgba(90, 70, 40, 0.14);
   --glass-blur: 14px;
-  /* 背景：由左（淡米白）到右（淡天空藍）的線性漸層加三個淡光暈（暖橘、天藍、淡紫） */
+  /* 背景：由左（淡米白）到右（淡天空藍）的線性漸層加三個淡光暈（淡青綠、天藍、淡紫；原本的暖橘已換掉） */
   --bg-left: #f7f5f0;
   --bg-right: #eaf3f8;
-  --glow-1: rgba(255, 160, 90, 0.22);
+  --glow-1: rgba(70, 200, 185, 0.22);
   --glow-2: rgba(80, 170, 235, 0.2);
   --glow-3: rgba(160, 130, 255, 0.14);
   --card-glow-mix: 40%; /* 卡片外圍光暈的濃度 */
@@ -525,9 +525,23 @@ option { background: var(--surface); color: var(--text); } /* 展開的選項清
      改成約 12 秒一個畫面寬（一個週期 24 秒），光暈濃度提高約 1.6 倍，流動才看得出來 */
   :root[data-theme="light"] {
     --bg-flow-duration: 24s;
-    --glow-1: rgba(255, 160, 90, 0.35);
+    --glow-1: rgba(70, 200, 185, 0.3); /* 淡青綠（與桌機同色），手機上濃一點才看得出流動 */
     --glow-2: rgba(80, 170, 235, 0.32);
-    --glow-3: rgba(160, 130, 255, 0.22);
+    --glow-3: rgba(160, 130, 255, 0.28);
+  }
+  /* 手機的光暈改成「小而多」：桌機版的光暈半徑依畫面長邊計算，直立手機上比整個畫面還寬，
+     移動時只像整片顏色變深變淺、看不出流動。這裡每個週期（200vw）放 5 個半徑 60vw 的色團，
+     高低錯落、橘藍紫輪流，會一個個從左邊飄進來、右邊飄出去；靠近週期邊界的另補一份（108%、-14%）接續 */
+  :root[data-theme="light"] body::before {
+    background-image:
+      radial-gradient(circle 60vw at 8% 12%, var(--glow-1) 0, transparent 100%),
+      radial-gradient(circle 60vw at 108% 12%, var(--glow-1) 0, transparent 100%),
+      radial-gradient(circle 60vw at 28% 55%, var(--glow-2) 0, transparent 100%),
+      radial-gradient(circle 60vw at 46% 88%, var(--glow-3) 0, transparent 100%),
+      radial-gradient(circle 60vw at 66% 32%, var(--glow-1) 0, transparent 100%),
+      radial-gradient(circle 60vw at 86% 72%, var(--glow-2) 0, transparent 100%),
+      radial-gradient(circle 60vw at -14% 72%, var(--glow-2) 0, transparent 100%),
+      linear-gradient(90deg, var(--bg-left), var(--bg-right) 50%, var(--bg-left));
   }
   .panel { padding: 12px 14px; border-radius: 16px; }
 }
