@@ -149,7 +149,7 @@ flowchart TD
 | `lib/carousel.ts` | `wrapIndex`、`swipeStep`、`CAROUSEL_INTERVAL_MS` | 摘要輪播的換頁規則：頁碼頭尾相接、手指滑動方向、自動輪播間隔（4 秒） |
 | `lib/tables.ts` | `makeTable`、`nextPeriods`、`visibleColumns` | 明細表格與「後續時段」的資料整理 |
 | `lib/charts.ts` | `seriesChartSpec`、`CHART_HEIGHT` | 趨勢折線圖的 Vega-Lite 規格（monotone 曲線、圖例點選強調、門檻線、「現在」虛線）；單一縣市的三條溫度線合併並加漸層溫度帶；手機上圖例換行（`legendColumns`） |
-| `lib/mapView.ts` | `mapPoints`、`markerHtml`、`tooltipHtml`、`mapViewport` | 地圖的標記、提示框、圖例與視野（被選縣市放大） |
+| `lib/mapView.ts` | `mapPoints`、`markerHtml`、`markerSize`、`tooltipHtml`、`mapViewport`、`legendGradient` | 地圖的標記（級距色、降雨環、被選／淡化、全台視野縮小）、提示框、圖例色條與視野（被選縣市放大）；標記外觀在 `global.css` 的 `.tm` |
 | `lib/temperature.ts` | `BANDS`、`textColor` | 氣溫級距與顏色，地圖、表格、摘要共用 |
 | `lib/rain.ts` | `RAIN_ALERT`、`rainColor` | 降雨告警門檻（60%）與降雨色階，趨勢圖與摘要卡片共用 |
 | `lib/tempRange.ts` | `RANGE_WIDE`、`rangeColor` | 溫差色階（紫色系：< 6、6～9、≥ 10 °C），溫差卡片的發光邊框 |
@@ -160,6 +160,8 @@ flowchart TD
 | `lib/updateApi.ts` | `fetchUpdateStatus`、`requestDispatch` | 呼叫 `api/`；連不上或回應不是 JSON 時一律不放行 |
 | `lib/admin.ts` | `AlertSettingsService`、`validate`、`translateError` | 告警設定的資料層：經資料庫函式讀寫、儲存前驗證、錯誤訊息遮蔽密碼 |
 | `lib/tooltipAutoHide.ts` | `installTooltipAutoHide` | 捲動或滑動時收起圖表提示框（手機沒有「滑鼠移開」） |
+| `background/particle-background.ts` | `ParticleBackground` | 背景流場粒子（Canvas 2D，框架無關）；顏色讀 CSS 變數，含幀率上限、分頁隱藏暫停、減少動態效果、`destroy()`。說明見 `forecast/docs/background-effects.md` |
+| `background/darkOnly.ts` | `playInDarkOnly` | 依 `<html data-theme>` 讓粒子只在深色主題播放 |
 | `lib/theme.ts` | `nextTheme`、`readTheme`、`applyTheme`、`initTheme` | 主題切換（自動／淺色／深色）：記在 localStorage、寫入 `<html data-theme>`、自動時跟著系統；`index.html` 載入前先套用一次 |
 
 ### 伺服器端（`web/api/` 與 `server/`，Vercel Functions）

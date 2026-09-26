@@ -62,6 +62,11 @@
   --glow-2: rgba(0, 170, 200, 0.22);
   --glow-3: rgba(255, 110, 90, 0.18);
   --card-glow-mix: 60%;
+  /* 背景流場粒子的顏色（只在深色主題播放，見 src/background/darkOnly.ts）；
+     particle-background.ts 的 colorVars 讀這三個，不要在 TS 寫死色碼 */
+  --p-1: rgb(185, 165, 255);
+  --p-2: rgb(95, 215, 235);
+  --p-3: rgb(255, 158, 138);
 }
 
 * { box-sizing: border-box; }
@@ -83,6 +88,57 @@ body::before {
     radial-gradient(circle at 72% 94%, var(--glow-3) 0, transparent 46%),
     linear-gradient(90deg, var(--bg-left), var(--bg-right));
 }
+
+/* 淺色主題的水平流動：背景（底色漸層＋三個光暈）由左往右慢慢平移（深色主題改由背景粒子流動，這裡不動）。
+   - 背景層加寬成 400vw，圖樣以 200vw（兩個畫面寬）為一個週期重複：米白 → 淡藍 → 米白，光暈每個週期出現兩次；
+     靠近週期邊界的光暈另補一份接續的（-5%、-14%、105%），重複時才不會切出硬邊。
+   - 動畫只動 transform（CLAUDE.md 的背景規則）：從 -50%（= -200vw，一個週期）移到 0，剛好接回起點、看不出接縫。
+     --bg-flow-duration 為一個週期的時間：60 秒 = 每 30 秒移一個畫面寬。
+   - 光暈半徑改用 vmax（原本是相對整個畫面的 %，加寬後會跟著變大），數值依原本的大小換算。
+   - 靜止時（減少動態效果）位移為 0，看到的正好是週期開頭，與原本的背景幾乎相同 */
+:root[data-theme="light"] {
+  --bg-flow-duration: 60s;
+}
+:root[data-theme="light"] body::before {
+  right: auto;
+  width: 400vw;
+  background-image:
+    radial-gradient(circle 47vmax at 5% 6%, var(--glow-1) 0, transparent 100%),
+    radial-gradient(circle 47vmax at 55% 6%, var(--glow-1) 0, transparent 100%),
+    radial-gradient(circle 47vmax at 105% 6%, var(--glow-1) 0, transparent 100%),
+    radial-gradient(circle 44vmax at 45% 10%, var(--glow-2) 0, transparent 100%),
+    radial-gradient(circle 44vmax at 95% 10%, var(--glow-2) 0, transparent 100%),
+    radial-gradient(circle 44vmax at -5% 10%, var(--glow-2) 0, transparent 100%),
+    radial-gradient(circle 45vmax at 36% 94%, var(--glow-3) 0, transparent 100%),
+    radial-gradient(circle 45vmax at 86% 94%, var(--glow-3) 0, transparent 100%),
+    radial-gradient(circle 45vmax at -14% 94%, var(--glow-3) 0, transparent 100%),
+    linear-gradient(90deg, var(--bg-left), var(--bg-right) 50%, var(--bg-left));
+  background-size: 50% 100%;
+  background-repeat: repeat-x;
+}
+@keyframes bg-flow {
+  from { transform: translateX(-50%); }
+  to { transform: translateX(0); }
+}
+@media (prefers-reduced-motion: no-preference) {
+  :root[data-theme="light"] body::before {
+    animation: bg-flow var(--bg-flow-duration) linear infinite;
+    will-change: transform;
+  }
+}
+
+/* 背景流場粒子，只在深色主題播放（index.html 的 <canvas class="pb-canvas">，main.tsx 以 playInDarkOnly 開關）：
+   與 body::before 同為 z-index -1，排在它後面，所以畫在漸層光暈之上、頁面內容之下；不接收滑鼠事件。
+   說明見 forecast/docs/background-effects.md */
+.pb-canvas {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: -1;
+  pointer-events: none;
+}
+.pb-canvas[hidden] { display: none; } /* 淺色主題時隱藏 */
 
 /* 共用的玻璃外觀：摘要卡片、地圖區與分頁區 */
 .card, .panel {
@@ -142,10 +198,20 @@ button:disabled { opacity: 0.55; cursor: not-allowed; }
 .caption b { color: var(--text); }
 /* 左欄的更新時間與預報時段：每項一行的小字清單 */
 .info-lines {
-  list-style: none; margin: 0; padding: 0; color: var(--muted); font-size: 1rem; line-height: 1.4; /* 與提示框同字級 */
+  list-style: none; margin: 0; padding: 0; color: var(--text); font-size: 1rem; line-height: 1.4; /* 與提示框同字級；全部用主文字色（深色模式為近白） */
   display: flex; flex-direction: column; gap: var(--info-line-gap, 6px); /* 行距由 .overview-side 的 --info-line-gap 設定 */
 }
-.info-lines b { color: var(--text); }
+/* 左欄的更新資訊包在玻璃框裡（與摘要卡片、地圖面板同一組玻璃變數） */
+.overview .info-lines {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: 16px;
+  padding: 12px 16px;
+  box-shadow: 0 8px 32px var(--glass-shadow);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(140%);
+  backdrop-filter: blur(var(--glass-blur)) saturate(140%);
+}
+.info-lines b { font-weight: 400; white-space: nowrap; } /* 不用粗體；時間不拆開，放不下時整段換到下一行 */
 
 /* ---- 提示框 ---- */
 .notice { padding: 12px 16px; border-radius: 8px; margin: 10px 0; }
@@ -210,7 +276,7 @@ option { background: var(--surface); color: var(--text); } /* 展開的選項清
 .carousel .card-scope { font-size: 1.2rem; font-weight: 700; margin-bottom: 4px; } /* 最上方的範圍名稱（地區或縣市） */
 .carousel .card-label { font-size: 1.2rem; word-break: keep-all; } /* 只在空白處換行：「最高降雨機率　臺北市」不會斷成「臺北／市」 */
 .carousel .card-value { font-size: 44px; line-height: 1.25; }
-.carousel .card-aside { font-size: 1.1rem; margin-left: 8px; }
+.carousel .card-aside { display: block; font-size: 1.1rem; margin: 2px 0 0; } /* 天氣圖示與文字（如「🌙☁️ 晴時多雲」）放在數字下一行 */
 .carousel .card-value-multi { font-size: 32px; white-space: nowrap; } /* 「30 / 23 °C」較長，縮小並保持一行 */
 .carousel .card-sep { color: var(--muted); font-weight: 400; } /* 「29 / 25 °C」中間的斜線 */
 .carousel .card-sub { font-size: 1rem; color: var(--muted); } /* 最高／最低溫各是哪個縣市 */
@@ -313,7 +379,33 @@ option { background: var(--surface); color: var(--text); } /* 展開的選項清
 .map-wrap { position: relative; border-radius: 12px; overflow: hidden; }
 .map { width: 100%; height: 100%; }
 .temp-marker { background: none; border: none; }
-/* 底圖（OpenStreetMap）不論主題都是淺色，圖例與提示框固定用淺色玻璃 */
+
+/* 溫度標記（lib/mapView.ts 的 markerHtml 帶入 --c 級距色、--size、--ring、--fg，有降雨機率時再帶 --rain、--rain-c）：
+   外層 .tm 是降雨環（conic-gradient 畫出「降雨機率」那麼長的弧，mask 挖空中間只留一圈），
+   內層 .tm-dot 是放射漸層的圓圈加同色柔光 */
+.tm { position: relative; width: var(--size); height: var(--size); border-radius: 50%; }
+.tm-has-rain::before {
+  content: ""; position: absolute; inset: 0; border-radius: 50%;
+  background: conic-gradient(var(--rain-c) var(--rain), rgba(255, 255, 255, 0.55) 0);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - var(--ring)), #000 calc(100% - var(--ring)));
+  mask: radial-gradient(farthest-side, transparent calc(100% - var(--ring)), #000 calc(100% - var(--ring)));
+}
+.tm-dot {
+  position: absolute; inset: calc(var(--ring) + 1px); border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: radial-gradient(circle at 35% 30%, color-mix(in srgb, var(--c) 45%, #fff) 0,
+                              var(--c) 55%, color-mix(in srgb, var(--c) 78%, #000) 100%);
+  border: 1.5px solid rgba(255, 255, 255, 0.9);
+  box-shadow: 0 0 12px 1px color-mix(in srgb, var(--c) 70%, transparent), 0 2px 5px rgba(0, 0, 0, 0.35);
+  color: var(--fg); font: 700 13px/1 system-ui, sans-serif;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.18);
+}
+.tm-compact .tm-dot { font-size: 12px; }
+.tm-dim { opacity: 0.45; }
+/* 被選中：只放大（尺寸由 markerSize 決定），字大一點；不加外框，與「選地區」一樣靠其他縣市淡化來區分 */
+.tm-selected .tm-dot { font-size: 14px; }
+
+/* 圖例與提示框：玻璃外觀，跟著主題切換淺色／深色（底圖本身不論主題都是淺色的 OpenStreetMap） */
 .map-legend, .leaflet-tooltip.map-tooltip {
   background: rgba(255, 255, 255, 0.72);
   -webkit-backdrop-filter: blur(10px);
@@ -323,11 +415,26 @@ option { background: var(--surface); color: var(--text); } /* 展開的選項清
   box-shadow: 0 6px 20px rgba(60, 50, 30, 0.22);
   color: #222;
 }
-.map-legend { position: absolute; left: 12px; bottom: 24px; z-index: 1000; padding: 8px 12px; font-size: 12px; line-height: 1.6; }
-.legend-dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 6px; vertical-align: -1px; }
+:root[data-theme="dark"] .map-legend, :root[data-theme="dark"] .leaflet-tooltip.map-tooltip {
+  background: rgba(27, 31, 43, 0.78);
+  border-color: rgba(255, 255, 255, 0.16);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+  color: #eceff4;
+}
+.map-legend { position: absolute; left: 12px; bottom: 24px; z-index: 1000; padding: 8px 12px; font-size: 12px; line-height: 1.6; width: 150px; }
+/* 連續色條：每個級距一段顏色、交界處柔和過渡（lib/mapView.ts 的 legendGradient），下方標出分界溫度 */
+.legend-bar { height: 8px; border-radius: 4px; margin-top: 4px; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.08); }
+.legend-ticks { position: relative; height: 16px; font-size: 11px; opacity: 0.85; }
+.legend-ticks > span { position: absolute; top: 1px; transform: translateX(-50%); }
+.legend-rain { display: flex; align-items: center; gap: 6px; margin-top: 2px; }
+.legend-ring {
+  width: 14px; height: 14px; border-radius: 50%; flex: none;
+  background: conic-gradient(#339af0 60%, rgba(128, 128, 128, 0.35) 0);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 3px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 3px));
+}
 .leaflet-tooltip.map-tooltip { padding: 8px 12px; font-size: 13px; line-height: 1.5; }
 .leaflet-tooltip.map-tooltip::before { display: none; }
-
 /* ---- 表格 ---- */
 .table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 10px; background: color-mix(in srgb, var(--surface) 70%, transparent); }
 .forecast-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; white-space: nowrap; }

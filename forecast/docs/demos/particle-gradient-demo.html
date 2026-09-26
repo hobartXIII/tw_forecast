@@ -1,0 +1,422 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>粒子流動背景範例</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  color-scheme: light dark;
+  /* ---- 沿用你原本的參數 ---- */
+  --glass-bg: light-dark(rgba(255,255,255,.55), rgba(255,255,255,.07));
+  --glass-border: light-dark(rgba(255,255,255,.75), rgba(255,255,255,.16));
+  --glass-shadow: light-dark(rgba(90,70,40,.14), rgba(0,0,0,.40));
+  --glass-blur: 14px;
+  --accent-primary: light-dark(#d9480f, #ff8a5c);
+  --bg-left: light-dark(#F7F5F0, #12141C);
+  --bg-right: light-dark(#EAF3F8, #12141C);
+  --glow-1: light-dark(rgba(255,160,90,.22), rgba(120,90,255,.30));
+  --glow-2: light-dark(rgba(80,170,235,.20), rgba(0,170,200,.22));
+  --glow-3: light-dark(rgba(160,130,255,.14), rgba(255,110,90,.18));
+  /* ---- 範例新增：文字色與粒子色（粒子色取自光暈色系，淺色版加深才看得到） ---- */
+  --text: light-dark(#2b2723, #e8e6ef);
+  --text-muted: light-dark(#6d665d, #a4a2b4);
+  --p-1: light-dark(rgb(236,128,60), rgb(185,165,255));
+  --p-2: light-dark(rgb(48,146,214), rgb(95,215,235));
+  --p-3: light-dark(rgb(138,108,232), rgb(255,158,138));
+  --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.07'/%3E%3C/svg%3E");
+
+  box-sizing: border-box;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"]  { color-scheme: dark; }
+*, *::before, *::after { box-sizing: inherit; }
+html { scroll-padding-top: env(safe-area-inset-top, 0px); }
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background-color: var(--bg-left);
+  color: var(--text);
+  font-family: "Noto Sans TC", system-ui, -apple-system, "PingFang TC", "Microsoft JhengHei", sans-serif;
+  line-height: 1.7;
+}
+
+/* ---------- 第 1 層：漸層 + 顆粒 + 漂移光暈 ---------- */
+.bg {
+  position: fixed; inset: 0; z-index: 0; overflow: hidden; pointer-events: none;
+  background-image: var(--grain), linear-gradient(90deg, var(--bg-left), var(--bg-right));
+}
+.bg.no-grain { background-image: linear-gradient(90deg, var(--bg-left), var(--bg-right)); }
+.glow { position: absolute; inset: -15%; will-change: transform; }
+.glow-a {
+  background-image:
+    radial-gradient(circle at 10% 6%,  var(--glow-1) 0, transparent 42%),
+    radial-gradient(circle at 72% 94%, var(--glow-3) 0, transparent 46%);
+  animation: drift-a 28s ease-in-out infinite alternate;
+}
+.glow-b {
+  background-image: radial-gradient(circle at 90% 10%, var(--glow-2) 0, transparent 40%);
+  animation: drift-b 37s ease-in-out infinite alternate;
+}
+.bg.paused .glow { animation-play-state: paused; }
+@keyframes drift-a {
+  0%   { transform: translate(0, 0) scale(1); }
+  50%  { transform: translate(6%, 4%) scale(1.08); }
+  100% { transform: translate(-4%, 7%) scale(.96); }
+}
+@keyframes drift-b {
+  0%   { transform: translate(0, 0) rotate(0deg); }
+  50%  { transform: translate(-7%, 5%) rotate(6deg); }
+  100% { transform: translate(-3%, -4%) rotate(-4deg); }
+}
+
+/* ---------- 第 2 層：粒子畫布 ---------- */
+#particles { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 1; pointer-events: none; }
+
+/* ---------- 第 3 層：內容 ---------- */
+main {
+  position: relative; z-index: 2;
+  max-width: 1080px; margin: 0 auto;
+  padding: clamp(24px, 5vw, 56px) 20px 48px;
+}
+header { max-width: 38em; margin-bottom: 28px; }
+h1 { font-size: clamp(1.7rem, 4vw, 2.4rem); line-height: 1.3; margin: 0 0 .4em; font-weight: 700; letter-spacing: .02em; }
+header p { margin: 0; color: var(--text-muted); }
+
+.layout { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 20px; align-items: start; }
+@media (max-width: 820px) {
+  .layout { grid-template-columns: 1fr; }
+  .panel { order: -1; }
+}
+.stack { display: grid; gap: 20px; }
+
+.glass {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  box-shadow: 0 10px 32px var(--glass-shadow);
+  backdrop-filter: blur(var(--glass-blur)) saturate(140%);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(140%);
+  border-radius: 20px;
+  padding: 22px 24px;
+}
+body.no-glass .glass { backdrop-filter: none; -webkit-backdrop-filter: none; }
+h2 { font-size: 1.1rem; margin: 0 0 .6em; font-weight: 700; }
+.glass p { margin: 0 0 .8em; max-width: 40em; }
+.glass p:last-child { margin-bottom: 0; }
+.muted { color: var(--text-muted); font-size: .92rem; }
+
+/* 效能數字 */
+.stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 4px 0 14px; }
+@media (max-width: 520px) { .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.stats div { display: flex; flex-direction: column; }
+.stats dt { font-size: .82rem; color: var(--text-muted); }
+.stats dd { margin: 0; font-size: 1.5rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+/* 控制面板 */
+.panel { position: sticky; top: calc(16px + env(safe-area-inset-top, 0px)); }
+.ctl { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; margin-bottom: 14px; font-size: .95rem; }
+.ctl input[type="range"], .ctl select { grid-column: 1 / -1; width: 100%; }
+.ctl output { font-variant-numeric: tabular-nums; color: var(--text-muted); }
+input, select, button { font: inherit; color: inherit; accent-color: var(--accent-primary); }
+select {
+  background: var(--glass-bg); border: 1px solid var(--glass-border);
+  border-radius: 10px; padding: 6px 8px;
+}
+.checks { display: grid; gap: 6px; margin: 4px 0 16px; }
+.checks label { display: flex; gap: 8px; align-items: center; cursor: pointer; }
+.seg { display: flex; gap: 4px; padding: 4px; border-radius: 12px; background: var(--glass-bg); border: 1px solid var(--glass-border); margin-bottom: 16px; }
+.seg button {
+  flex: 1; border: 0; background: transparent; padding: 6px 4px; border-radius: 9px; cursor: pointer; font-size: .9rem;
+}
+.seg button[aria-pressed="true"] { background: var(--accent-primary); color: #fff; font-weight: 500; }
+.note { font-size: .88rem; color: var(--text-muted); border-left: 3px solid var(--accent-primary); padding-left: 10px; margin: 0 0 14px; }
+.note[hidden] { display: none; }
+:focus-visible { outline: 2px solid var(--accent-primary); outline-offset: 2px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .glow { animation: none; }
+}
+</style>
+</head>
+<body>
+<div class="bg" id="bg" aria-hidden="true">
+  <div class="glow glow-a"></div>
+  <div class="glow glow-b"></div>
+</div>
+<canvas id="particles" aria-hidden="true"></canvas>
+
+<main>
+  <header>
+    <h1>漸層上的粒子流動</h1>
+    <p>你原本的配色與光暈，加上緩慢漂移、顆粒質感和 Canvas 流場粒子。每一層都能在面板裡單獨開關，方便比較視覺和效能的差別。</p>
+  </header>
+
+  <div class="layout">
+    <div class="stack">
+      <section class="glass" aria-labelledby="perf-title">
+        <h2 id="perf-title">即時效能</h2>
+        <dl class="stats">
+          <div><dt>實際幀率</dt><dd id="statFps">—</dd></div>
+          <div><dt>每幀 JS 耗時 (ms)</dt><dd id="statMs">—</dd></div>
+          <div><dt>粒子數</dt><dd id="statN">—</dd></div>
+          <div><dt>畫布解析度</dt><dd id="statRes">—</dd></div>
+        </dl>
+        <p class="muted">「每幀耗時」只計算粒子的運算與繪製，不含瀏覽器合成毛玻璃的成本。想看完整負擔，建議用手機打開這頁放一兩分鐘，觀察是否發熱或滑動卡頓，或開 DevTools 的 Performance 面板錄一段。</p>
+      </section>
+
+      <section class="glass" aria-labelledby="glass-title">
+        <h2 id="glass-title">毛玻璃卡片後面的樣子</h2>
+        <p>粒子從卡片後方經過時，會被模糊成柔和的光斑，這就是毛玻璃需要「背後有變化」才好看的原因。</p>
+        <p>可以試試把「毛玻璃」關掉，看看幀率有沒有明顯提升；再把模糊半徑從 14px 拉到 24px，比較在手機上的差異。模糊半徑通常是整個畫面裡最貴的一個參數。</p>
+      </section>
+
+      <section class="glass" aria-labelledby="read-title">
+        <h2 id="read-title">內文可讀性測試</h2>
+        <p>背景會動時，最容易被忽略的是文字可讀性。這段文字放在卡片裡，用來檢查深淺色模式下，粒子經過時會不會干擾閱讀。如果覺得太搶眼，優先降低粒子數量或大小，而不是提高卡片的不透明度，這樣玻璃的通透感才保得住。</p>
+      </section>
+    </div>
+
+    <aside class="glass panel" aria-labelledby="ctl-title">
+      <h2 id="ctl-title">調整參數</h2>
+      <p class="note" id="rmNote" hidden>系統開啟了「減少動態效果」，所以動畫預設為關閉，可以在下方手動開啟。</p>
+
+      <div class="seg" role="group" aria-label="主題">
+        <button type="button" data-theme-btn="auto" aria-pressed="true">跟隨系統</button>
+        <button type="button" data-theme-btn="light" aria-pressed="false">淺色</button>
+        <button type="button" data-theme-btn="dark" aria-pressed="false">深色</button>
+      </div>
+
+      <div class="checks">
+        <label><input type="checkbox" id="particlesOn" checked> 粒子</label>
+        <label><input type="checkbox" id="trail" checked> 粒子拖尾</label>
+        <label><input type="checkbox" id="drift" checked> 光暈漂移</label>
+        <label><input type="checkbox" id="grain" checked> 顆粒質感</label>
+        <label><input type="checkbox" id="glass" checked> 毛玻璃</label>
+      </div>
+
+      <div class="ctl">
+        <label for="count">粒子數量</label><output id="countOut" for="count"></output>
+        <input type="range" id="count" min="0" max="800" step="10">
+      </div>
+      <div class="ctl">
+        <label for="speed">流動速度</label><output id="speedOut" for="speed"></output>
+        <input type="range" id="speed" min="0.2" max="3" step="0.1" value="1">
+      </div>
+      <div class="ctl">
+        <label for="size">粒子大小</label><output id="sizeOut" for="size"></output>
+        <input type="range" id="size" min="0.4" max="2.5" step="0.1" value="1">
+      </div>
+      <div class="ctl">
+        <label for="blur">模糊半徑</label><output id="blurOut" for="blur"></output>
+        <input type="range" id="blur" min="0" max="24" step="1" value="14">
+      </div>
+      <div class="ctl">
+        <label for="fps">幀率上限</label>
+        <select id="fps"><option value="30" selected>30 fps</option><option value="60">60 fps</option></select>
+      </div>
+      <div class="ctl">
+        <label for="scale">畫布解析度</label>
+        <select id="scale"><option value="1" selected>1x（原尺寸）</option><option value="0.5">0.5x（省效能）</option></select>
+      </div>
+    </aside>
+  </div>
+</main>
+
+<span id="probe" style="position:absolute;width:0;height:0;overflow:hidden" aria-hidden="true"></span>
+
+<script>
+(() => {
+  const root = document.documentElement;
+  const $ = (id) => document.getElementById(id);
+  const canvas = $('particles');
+  const ctx = canvas.getContext('2d');
+  const probe = $('probe');
+  const bg = $('bg');
+  const darkMQ = matchMedia('(prefers-color-scheme: dark)');
+  const reduceMQ = matchMedia('(prefers-reduced-motion: reduce)');
+
+  const defaultCount = Math.max(60, Math.min(300, Math.round(innerWidth * innerHeight / 6000)));
+  const cfg = { on: true, count: defaultCount, speed: 1, size: 1, trail: true, fps: 30, scale: 1 };
+
+  let W = 0, H = 0, dark = false, sprites = [], particles = [];
+
+  // ---- 從 CSS 變數讀出實際顏色（light-dark() 要透過計算後的 color 才拿得到） ----
+  function readRGB(varName) {
+    probe.style.color = `var(${varName})`;
+    const m = getComputedStyle(probe).color.match(/[\d.]+/g) || [255, 255, 255];
+    return m.slice(0, 3).map(Number);
+  }
+  function makeSprite([r, g, b]) {
+    const s = 32, c = document.createElement('canvas');
+    c.width = c.height = s;
+    const x = c.getContext('2d');
+    const grad = x.createRadialGradient(s / 2, s / 2, 0, s / 2, s / 2, s / 2);
+    grad.addColorStop(0, `rgba(${r},${g},${b},1)`);
+    grad.addColorStop(0.35, `rgba(${r},${g},${b},.5)`);
+    grad.addColorStop(1, `rgba(${r},${g},${b},0)`);
+    x.fillStyle = grad;
+    x.fillRect(0, 0, s, s);
+    return c;
+  }
+  function refreshTheme() {
+    const t = root.dataset.theme;
+    dark = t ? t === 'dark' : darkMQ.matches;
+    sprites = ['--p-1', '--p-2', '--p-3'].map((v) => makeSprite(readRGB(v)));
+    ctx.clearRect(0, 0, W, H);
+  }
+
+  // ---- 粒子 ----
+  function reset(p, initial) {
+    p.x = Math.random() * W;
+    p.y = Math.random() * H;
+    p.max = 4 + Math.random() * 6;               // 壽命 4~10 秒
+    p.life = initial ? Math.random() * p.max : 0;
+    p.k = 0.6 + Math.random() * 0.8;             // 各自速度係數
+    p.b = 1 + Math.random() * 2.5;               // 基礎大小
+    p.alpha = dark ? 0.35 + Math.random() * 0.5 : 0.45 + Math.random() * 0.45;
+    p.c = Math.floor(Math.random() * 3);
+    return p;
+  }
+  function syncCount() {
+    while (particles.length < cfg.count) particles.push(reset({}, true));
+    particles.length = cfg.count;
+    $('statN').textContent = cfg.count;
+  }
+  function resize() {
+    W = Math.max(1, Math.round(innerWidth * cfg.scale));
+    H = Math.max(1, Math.round(innerHeight * cfg.scale));
+    canvas.width = W;
+    canvas.height = H;
+    $('statRes').textContent = `${W}×${H}`;
+  }
+
+  // 流場：用幾個 sin/cos 疊出平滑、隨時間緩慢變化的方向場，不需要 noise 函式庫
+  function step(dt, t) {
+    if (cfg.trail) {
+      ctx.globalCompositeOperation = 'destination-out';
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = 'rgba(0,0,0,.16)';
+      ctx.fillRect(0, 0, W, H);
+    } else {
+      ctx.clearRect(0, 0, W, H);
+    }
+    ctx.globalCompositeOperation = dark ? 'lighter' : 'source-over';
+    const v = 22 * cfg.speed * cfg.scale * dt;
+    const f = 0.0021 / cfg.scale;
+    const sz = 6 * cfg.size * cfg.scale;
+    for (const p of particles) {
+      const a = Math.sin(p.x * f + t * 0.13) * 1.6
+              + Math.cos(p.y * f * 1.3 - t * 0.1) * 1.6
+              + Math.sin((p.x + p.y) * f * 0.5 + t * 0.05);
+      p.x += Math.cos(a) * v * p.k + v * 0.35;   // 加一點向右的整體漂移
+      p.y += Math.sin(a) * v * p.k;
+      p.life += dt;
+      if (p.life >= p.max || p.x < -20 || p.x > W + 20 || p.y < -20 || p.y > H + 20) { reset(p, false); continue; }
+      ctx.globalAlpha = p.alpha * Math.sin(Math.PI * p.life / p.max);  // 淡入淡出
+      const d = p.b * sz;
+      ctx.drawImage(sprites[p.c], p.x - d / 2, p.y - d / 2, d, d);
+    }
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = 'source-over';
+  }
+
+  // ---- 迴圈：限幀、統計、可暫停 ----
+  let raf = 0, last = 0, statT = 0, frames = 0, costSum = 0;
+  function frame(now) {
+    raf = requestAnimationFrame(frame);
+    const interval = 1000 / cfg.fps;
+    const elapsed = now - last;
+    if (elapsed < interval - 1) return;
+    last = now - (elapsed % interval);
+    const t0 = performance.now();
+    step(Math.min(elapsed, 100) / 1000, now / 1000);
+    costSum += performance.now() - t0;
+    frames++;
+    if (now - statT >= 500) {
+      $('statFps').textContent = Math.round(frames * 1000 / (now - statT));
+      $('statMs').textContent = (costSum / frames).toFixed(2);
+      frames = 0; costSum = 0; statT = now;
+    }
+  }
+  function start() {
+    if (raf || !cfg.on || document.hidden) return;
+    last = statT = performance.now();
+    frames = 0; costSum = 0;
+    raf = requestAnimationFrame(frame);
+  }
+  function stop() {
+    cancelAnimationFrame(raf);
+    raf = 0;
+    $('statFps').textContent = '—';
+    $('statMs').textContent = '—';
+  }
+
+  // ---- 控制項 ----
+  const bindRange = (id, key, fmt) => {
+    const el = $(id), out = $(id + 'Out');
+    const apply = () => { cfg[key] = Number(el.value); out.textContent = fmt(cfg[key]); };
+    el.addEventListener('input', () => { apply(); if (key === 'count') syncCount(); });
+    return apply;
+  };
+  $('count').value = cfg.count;
+  bindRange('count', 'count', (v) => v)();
+  bindRange('speed', 'speed', (v) => v.toFixed(1) + '×')();
+  bindRange('size', 'size', (v) => v.toFixed(1) + '×')();
+
+  const blur = $('blur');
+  const applyBlur = () => { root.style.setProperty('--glass-blur', blur.value + 'px'); $('blurOut').textContent = blur.value + 'px'; };
+  blur.addEventListener('input', applyBlur);
+  applyBlur();
+
+  $('particlesOn').addEventListener('change', (e) => {
+    cfg.on = e.target.checked;
+    if (cfg.on) start(); else { stop(); ctx.clearRect(0, 0, W, H); }
+  });
+  $('trail').addEventListener('change', (e) => { cfg.trail = e.target.checked; });
+  $('drift').addEventListener('change', (e) => bg.classList.toggle('paused', !e.target.checked));
+  $('grain').addEventListener('change', (e) => bg.classList.toggle('no-grain', !e.target.checked));
+  $('glass').addEventListener('change', (e) => document.body.classList.toggle('no-glass', !e.target.checked));
+  $('fps').addEventListener('change', (e) => { cfg.fps = Number(e.target.value); });
+  $('scale').addEventListener('change', (e) => {
+    const ratio = Number(e.target.value) / cfg.scale;
+    cfg.scale = Number(e.target.value);
+    for (const p of particles) { p.x *= ratio; p.y *= ratio; }
+    resize();
+  });
+
+  document.querySelectorAll('[data-theme-btn]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const v = btn.dataset.themeBtn;
+      if (v === 'auto') delete root.dataset.theme; else root.dataset.theme = v;
+      document.querySelectorAll('[data-theme-btn]').forEach((b) => b.setAttribute('aria-pressed', String(b === btn)));
+      refreshTheme();
+    });
+  });
+  darkMQ.addEventListener('change', () => { if (!root.dataset.theme) refreshTheme(); });
+
+  let resizeTimer = 0;
+  addEventListener('resize', () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(resize, 150); });
+  document.addEventListener('visibilitychange', () => (document.hidden ? stop() : start()));
+
+  // ---- 啟動 ----
+  resize();
+  refreshTheme();
+  syncCount();
+  if (reduceMQ.matches) {
+    cfg.on = false;
+    $('particlesOn').checked = false;
+    $('drift').checked = false;
+    bg.classList.add('paused');
+    $('rmNote').hidden = false;
+  }
+  start();
+})();
+</script>
+</body>
+</html>

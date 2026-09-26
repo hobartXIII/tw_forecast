@@ -11,7 +11,8 @@ import type * as Leaflet from "leaflet";
 import { useEffect, useRef, useState } from "react";
 
 import {
-  GESTURE_TEXT, LEGEND, mapPoints, mapViewport, markerHtml, markerSize, tooltipHtml,
+  COMPACT_BELOW_ZOOM, GESTURE_TEXT, LEGEND_TICKS, legendGradient, legendTickPos, mapPoints, mapViewport, markerHtml,
+  markerSize, tooltipHtml,
 } from "../lib/mapView";
 import type { Level, ScopedRow } from "../lib/scope";
 
@@ -34,6 +35,7 @@ export function TemperatureMap({ cur, level, highlight, height }: {
   const map = useRef<Leaflet.Map | null>(null);
   const markers = useRef<Leaflet.LayerGroup | null>(null);
   const [L, setL] = useState<typeof Leaflet | null>(null); // 地圖建立後才有值
+  const [zoom, setZoom] = useState<number | null>(null); // 目前的縮放層級（決定標記是否縮小）
 
   // 建立地圖（只做一次）
   useEffect(() => {
@@ -50,6 +52,7 @@ export function TemperatureMap({ cur, level, highlight, height }: {
         maxZoom: 18, attribution: "&copy; OpenStreetMap contributors",
       }).addTo(map.current);
       markers.current = L.layerGroup().addTo(map.current);
+      map.current.on("zoomend", () => setZoom(map.current?.getZoom() ?? null)); // 使用者縮放時只重畫標記，不改視野
       setL(() => L);
     });
     return () => {
@@ -59,17 +62,27 @@ export function TemperatureMap({ cur, level, highlight, height }: {
     };
   }, []);
 
-  // 依資料與範圍重畫標記、調整視野
+  // 範圍改變時調整視野（使用者自己縮放、拖曳後不會被拉回來，直到換範圍）
   useEffect(() => {
-    if (!L || !map.current || !markers.current) return;
+    if (!L || !map.current) return;
+    const view = mapViewport(mapPoints(cur, highlight), level);
+    if (view.kind === "center") map.current.setView(view.center, view.zoom);
+    else map.current.fitBounds(view.bounds, { padding: [40, 40], maxZoom: 10 });
+    setZoom(map.current.getZoom());
+  }, [L, cur, level, highlight]);
+
+  // 依資料、範圍與縮放層級重畫標記（全台視野時縮小）
+  useEffect(() => {
+    if (!L || !map.current || !markers.current || zoom === null) return;
     markers.current.clearLayers();
+    const compact = zoom < COMPACT_BELOW_ZOOM;
     const points = mapPoints(cur, highlight);
     const rows = new Map(cur.map((r) => [r.location_name, r]));
     for (const p of points) {
-      const half = markerSize(p.state) / 2;
+      const half = markerSize(p.state, compact) / 2;
       L.marker([p.lat, p.lng], {
         icon: L.divIcon({
-          html: markerHtml(p.temp, p.state), className: "temp-marker",
+          html: markerHtml(p.temp, p.state, p.rain, compact), className: "temp-marker",
           iconSize: [half * 2, half * 2], iconAnchor: [half, half],
           tooltipAnchor: [half, 0], // 提示框貼在標記左右側（依位置自動選邊），不會被地圖上緣切掉
         }),
@@ -78,19 +91,18 @@ export function TemperatureMap({ cur, level, highlight, height }: {
         .bindTooltip(tooltipHtml(rows.get(p.city)!, p.temp), { className: "map-tooltip", direction: "auto" })
         .addTo(markers.current);
     }
-    const view = mapViewport(points, level);
-    if (view.kind === "center") map.current.setView(view.center, view.zoom);
-    else map.current.fitBounds(view.bounds, { padding: [40, 40], maxZoom: 10 });
-  }, [L, cur, level, highlight]);
+  }, [L, cur, highlight, zoom]);
 
   return (
     <div className="map-wrap" style={{ height }}>
       <div ref={container} className="map" />
       <div className="map-legend">
-        <b>平均氣溫</b>
-        {LEGEND.map(([color, label]) => (
-          <div key={label}><span className="legend-dot" style={{ background: color }} />{label}</div>
-        ))}
+        <b>平均氣溫 (°C)</b>
+        <div className="legend-bar" style={{ background: legendGradient() }} />
+        <div className="legend-ticks">
+          {LEGEND_TICKS.map((t) => <span key={t} style={{ left: `${legendTickPos(t)}%` }}>{t}</span>)}
+        </div>
+        <div className="legend-rain"><span className="legend-ring" aria-hidden="true" />外環：降雨機率</div>
       </div>
     </div>
   );
