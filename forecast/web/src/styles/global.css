@@ -1,6 +1,7 @@
-/* 全域樣式：淺色／深色跟著系統設定。顏色沿用 Streamlit 版 .streamlit/config.toml 的主題，
+/* 全域樣式：淺色／深色由標題列的主題按鈕決定（預設「自動」跟著系統；lib/theme.ts 寫入 <html data-theme>）。
+   顏色沿用 Streamlit 版 .streamlit/config.toml 的主題，
    玻璃擬態（漸層背景、半透明模糊的卡片與面板、發光邊框、進場與浮起動畫）沿用 frontend/style.py。
-   要調整顏色或模糊程度，改 :root 的變數即可（深色模式在下面的 media query 覆寫）。 */
+   要調整顏色或模糊程度，改 :root 的變數即可（深色模式在下面的 [data-theme="dark"] 覆寫，只有這一份）。 */
 :root {
   --bg: #f7f5f0;
   --surface: #ffffff;
@@ -29,38 +30,38 @@
   --glow-2: rgba(80, 170, 235, 0.2);
   --glow-3: rgba(160, 130, 255, 0.14);
   --card-glow-mix: 40%; /* 卡片外圍光暈的濃度 */
-  color-scheme: light dark;
+  color-scheme: light; /* 原生元件（下拉、捲軸）跟著主題 */
   font-family: system-ui, "Noto Sans TC", "Microsoft JhengHei", "PingFang TC", sans-serif;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #12141c;
-    --surface: #1b1f2b;
-    --surface-2: #232838;
-    --text: #eceff4;
-    --muted: #9aa3b2;
-    --border: #2e3444;
-    --primary: #ff8a5c;
-    --info-bg: rgba(61, 157, 243, 0.2);
-    --info-text: #c7ebff;
-    --warning-bg: rgba(255, 193, 7, 0.18);
-    --warning-text: #ffe08a;
-    --error-bg: rgba(255, 108, 108, 0.2);
-    --error-text: #ffc7c7;
-    --success-bg: rgba(61, 213, 109, 0.2);
-    --success-text: #c2f5d0;
-    /* 深色：純色底加三個較濃的彩色光暈；光暈要濃一點才看得出來 */
-    --glass-bg: rgba(255, 255, 255, 0.07);
-    --glass-border: rgba(255, 255, 255, 0.16);
-    --glass-shadow: rgba(0, 0, 0, 0.4);
-    --bg-left: #12141c;
-    --bg-right: #12141c;
-    --glow-1: rgba(120, 90, 255, 0.3);
-    --glow-2: rgba(0, 170, 200, 0.22);
-    --glow-3: rgba(255, 110, 90, 0.18);
-    --card-glow-mix: 60%;
-  }
+/* 深色：實際是淺色或深色由 lib/theme.ts 算好寫入 data-theme（「自動」時跟著系統即時切換） */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #12141c;
+  --surface: #1b1f2b;
+  --surface-2: #232838;
+  --text: #eceff4;
+  --muted: #9aa3b2;
+  --border: #2e3444;
+  --primary: #ff8a5c;
+  --info-bg: rgba(61, 157, 243, 0.2);
+  --info-text: #c7ebff;
+  --warning-bg: rgba(255, 193, 7, 0.18);
+  --warning-text: #ffe08a;
+  --error-bg: rgba(255, 108, 108, 0.2);
+  --error-text: #ffc7c7;
+  --success-bg: rgba(61, 213, 109, 0.2);
+  --success-text: #c2f5d0;
+  /* 深色：純色底加三個較濃的彩色光暈；光暈要濃一點才看得出來 */
+  --glass-bg: rgba(255, 255, 255, 0.07);
+  --glass-border: rgba(255, 255, 255, 0.16);
+  --glass-shadow: rgba(0, 0, 0, 0.4);
+  --bg-left: #12141c;
+  --bg-right: #12141c;
+  --glow-1: rgba(120, 90, 255, 0.3);
+  --glow-2: rgba(0, 170, 200, 0.22);
+  --glow-3: rgba(255, 110, 90, 0.18);
+  --card-glow-mix: 60%;
 }
 
 * { box-sizing: border-box; }
@@ -92,10 +93,11 @@ body::before {
   backdrop-filter: blur(var(--glass-blur)) saturate(140%);
 }
 
+/* 左右留白：原本是「內容最寬 1200px 置中 + 16px」，兩側各 (100vw - 1200px) / 2 + 16px；
+   現在縮成原本的 1/3，也就是 (100vw - 1200px) / 6 + 16px / 3，任何螢幕寬度都照比例，最少保留 16px */
 .page {
-  max-width: 1200px;
   margin: 0 auto;
-  padding: 16px 16px 48px;
+  padding: 16px max(16px, calc((100vw - 1200px) / 6 + 5px)) 48px;
 }
 
 /* ---- 標題列 ---- */
@@ -110,6 +112,9 @@ body::before {
 .header-actions { display: flex; gap: 8px; }
 .num { font-variant-numeric: tabular-nums; } /* 倒數的數字寬度固定，不會左右跳動 */
 .menu-toggle { display: none; } /* 手機版才顯示（見檔尾） */
+/* 主題按鈕：電腦版只有圖示的小方鈕；手機版在選單裡顯示文字（見檔尾） */
+.theme-toggle { padding: 8px 10px; line-height: 1; }
+.theme-toggle-text { display: none; }
 button.primary { background: var(--primary); border-color: var(--primary); color: #fff; }
 button.wide { width: 100%; }
 
@@ -135,6 +140,12 @@ button:disabled { opacity: 0.55; cursor: not-allowed; }
 
 .caption { color: var(--muted); font-size: 0.9rem; margin: 6px 0 10px; }
 .caption b { color: var(--text); }
+/* 左欄的更新時間與預報時段：每項一行的小字清單 */
+.info-lines {
+  list-style: none; margin: 0; padding: 0; color: var(--muted); font-size: 1rem; line-height: 1.4; /* 與提示框同字級 */
+  display: flex; flex-direction: column; gap: var(--info-line-gap, 6px); /* 行距由 .overview-side 的 --info-line-gap 設定 */
+}
+.info-lines b { color: var(--text); }
 
 /* ---- 提示框 ---- */
 .notice { padding: 12px 16px; border-radius: 8px; margin: 10px 0; }
@@ -162,29 +173,97 @@ option { background: var(--surface); color: var(--text); } /* 展開的選項清
 .radio-row { display: flex; gap: 18px; margin: 4px 0; }
 .radio-row label { display: flex; align-items: center; gap: 4px; cursor: pointer; }
 
+/* ---- 篩選＋摘要輪播（左）與地圖（右）的兩欄版面；手機上改為上下排列（見檔尾） ---- */
+.overview {
+  display: grid;
+  /* 左欄剛好是選單與輪播的寬度（原本 1 : 2 左欄的 2/3，即內容寬的 2/9，最少 240px），內容靠左；地圖佔其餘寬度 */
+  grid-template-columns: minmax(240px, calc((100% - 16px) * 2 / 9)) minmax(0, 1fr);
+  gap: 16px;
+  align-items: stretch; /* 左欄與地圖等高 */
+  margin: 12px 0 16px;
+}
+/* 地區／縣市選單與輪播同寬，都等於左欄寬度（要調寬度改上面 .overview 的左欄） */
+/* 左欄四個區塊（更新資訊、地區、縣市、輪播）上下貼齊地圖區塊，彼此間距平均分配（最少 12px）。
+   可調參數：--info-line-gap（更新資訊每行之間）、--field-label-gap（「地區」「縣市」標籤與下拉之間） */
+.overview-side {
+  --info-line-gap: 12px;
+  --field-label-gap: 6px;
+  --carousel-height: 200px; /* 輪播高度；左欄貼齊地圖，輪播越高，四個區塊之間的間距越小 */
+  display: flex; flex-direction: column; justify-content: space-between; gap: 12px; min-width: 0;
+}
+.overview .filters { display: contents; } /* 地區、縣市各自成為左欄的一個區塊（參與平均分配間距） */
+.overview .filters label { font-size: 1rem; gap: var(--field-label-gap); } /* 左欄文字與提示框同字級（16px） */
+.overview .map-panel { margin: 0; min-width: 0; }
+
+/* ---- 摘要輪播 ----
+   四張卡片疊在同一格（grid-area 1 / 1，高度取最高的一張），只顯示目前那張，切換時淡入並輕微滑入。
+   不用 overflow: hidden 的橫向捲軸式輪播，因為裁切會把卡片外圍的光暈與陰影切出一條硬邊 */
+.carousel-track { display: grid; }
+.carousel-slide { grid-area: 1 / 1; min-width: 0; }
+.carousel-slide[aria-hidden="true"] { visibility: hidden; opacity: 0; transform: translateX(var(--slide-from, 16px)); }
+/* 箭頭與圓點疊在卡片裡：箭頭在左右兩側垂直置中、圓點在底部置中；卡片的左右與下方內距留出它們的位置 */
+.carousel { position: relative; } /* 寬度與選單相同（見 .overview-side） */
+.carousel .card {
+  display: flex; flex-direction: column; justify-content: center; /* 內容在卡片內垂直置中 */
+  padding: 16px 40px 32px; min-height: var(--carousel-height, 200px); text-align: center; /* 底部留給圓點，文字置中 */
+}
+.carousel .card-scope { font-size: 1.2rem; font-weight: 700; margin-bottom: 4px; } /* 最上方的範圍名稱（地區或縣市） */
+.carousel .card-label { font-size: 1.2rem; word-break: keep-all; } /* 只在空白處換行：「最高降雨機率　臺北市」不會斷成「臺北／市」 */
+.carousel .card-value { font-size: 44px; line-height: 1.25; }
+.carousel .card-aside { font-size: 1.1rem; margin-left: 8px; }
+.carousel .card-value-multi { font-size: 32px; white-space: nowrap; } /* 「30 / 23 °C」較長，縮小並保持一行 */
+.carousel .card-sep { color: var(--muted); font-weight: 400; } /* 「29 / 25 °C」中間的斜線 */
+.carousel .card-sub { font-size: 1rem; color: var(--muted); } /* 最高／最低溫各是哪個縣市 */
+.carousel .meter { margin: 10px auto 0; width: 80%; height: 6px; }
+.carousel .meter-placeholder { visibility: hidden; }
+.carousel-slide > .card { height: 100%; } /* 每張卡片都撐滿輪播高度，圓點與底部邊框的距離才一致 */
+.carousel-controls { position: absolute; inset: 0; pointer-events: none; } /* 只有按鈕接收點擊，卡片其他地方照常（滑動、滑鼠移上） */
+.carousel-arrow, .carousel-dot { pointer-events: auto; }
+.carousel-arrow {
+  position: absolute; top: 50%; transform: translateY(-50%);
+  width: 26px; height: 26px; padding: 0; border-radius: 50%;
+  font-size: 1rem; line-height: 1; opacity: 0.7;
+}
+.carousel-arrow:first-child { left: 8px; }
+.carousel-arrow:last-child { right: 8px; }
+.carousel-dots { position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%); display: flex; gap: 6px; }
+.carousel-dot {
+  width: 7px; height: 7px; padding: 0; border-radius: 50%;
+  border: none; box-shadow: none;
+  background: color-mix(in srgb, var(--text) 25%, transparent);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+@media (hover: hover) {
+  .carousel-arrow:hover:not(:disabled) { opacity: 1; }
+}
+.carousel-dot[aria-current="true"] { background: var(--primary); }
+@media (prefers-reduced-motion: no-preference) {
+  .carousel-slide { transition: opacity 0.4s ease, transform 0.4s cubic-bezier(0.2, 0.7, 0.2, 1), visibility 0.4s; }
+}
+
 /* ---- 摘要卡片 ----
-   發光邊框的顏色（--accent）與進場延遲（--delay）由 SummaryCards 以 inline style 帶入。
+   發光邊框的顏色（--accent）由 SummaryCards 以 inline style 帶入。
    邊框混入淡淡的級距色（溫度卡片依氣溫級距、降雨卡片依降雨色階），外圍再加一圈同色柔光；沒有 --accent 時就是一般玻璃邊框 */
-.cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin: 12px 0 16px; }
 .card {
   --glow: color-mix(in srgb, var(--accent, transparent) var(--card-glow-mix), transparent);
   border-color: color-mix(in srgb, var(--accent, transparent) 45%, var(--glass-border));
   border-radius: 16px;
-  padding: 14px 18px;
-  min-height: 112px;
+  padding: 10px 14px;
+  min-height: 75px; /* 輪播區塊縮小約 1/3（原本 112px） */
   box-shadow: 0 8px 32px var(--glass-shadow), 0 0 20px -2px var(--glow),
               inset 0 0 16px color-mix(in srgb, var(--accent, transparent) 10%, transparent);
 }
-.card-label { font-size: 14px; color: var(--muted); }
-.card-value { font-size: 34px; font-weight: 600; line-height: 1.3; }
-.card-aside { font-size: 16px; font-weight: 400; margin-left: 12px; opacity: 0.85; }
+.card-label { font-size: 12px; color: var(--muted); }
+.card-value { font-size: 24px; font-weight: 600; line-height: 1.3; }
+.card-aside { font-size: 13px; font-weight: 400; margin-left: 10px; opacity: 0.85; }
 .meter {
-  height: 6px; margin-top: 6px; border-radius: 3px; overflow: hidden;
+  height: 4px; margin-top: 4px; border-radius: 2px; overflow: hidden;
   background: color-mix(in srgb, currentColor 12%, transparent);
 }
 .meter > span { display: block; height: 100%; border-radius: 3px; background: var(--accent); transform-origin: left; }
 
-/* 動態效果：卡片由下往上依序淡入、進度條由左長出、滑鼠移上去微微浮起。
+/* 動態效果：卡片由下往上淡入、進度條由左長出、滑鼠移上去微微浮起。
    系統設定「減少動態效果」的使用者不套用。
    進場動畫只用 backwards（不用 both），動畫結束後才不會蓋掉 :hover 的 transform */
 @keyframes card-in { from { opacity: 0; transform: translateY(14px); } }
@@ -192,7 +271,6 @@ option { background: var(--surface); color: var(--text); } /* 展開的選項清
 @media (prefers-reduced-motion: no-preference) {
   .card {
     animation: card-in 0.55s cubic-bezier(0.2, 0.7, 0.2, 1) backwards;
-    animation-delay: var(--delay, 0ms);
     transition: transform 0.2s ease, box-shadow 0.2s ease;
   }
   @media (hover: hover) {
@@ -202,7 +280,7 @@ option { background: var(--surface); color: var(--text); } /* 展開的選項清
                   inset 0 0 16px color-mix(in srgb, var(--accent, transparent) 14%, transparent);
     }
   }
-  .meter > span { animation: meter-grow 0.9s cubic-bezier(0.2, 0.7, 0.2, 1) backwards; animation-delay: calc(var(--delay, 0ms) + 0.25s); }
+  .meter > span { animation: meter-grow 0.9s cubic-bezier(0.2, 0.7, 0.2, 1) backwards; animation-delay: 0.25s; }
 }
 
 /* ---- 分頁區 ---- */
@@ -318,9 +396,12 @@ option { background: var(--surface); color: var(--text); } /* 展開的選項清
   .menu-toggle { display: block; width: 33.333%; margin-left: auto; }
   .header-actions { display: none; width: 100%; flex-direction: column; }
   .header-actions.open { display: flex; }
+  .theme-toggle { padding: 8px 16px; line-height: inherit; }
+  .theme-toggle-text { display: inline; margin-left: 6px; }
   .modal-body { padding: 14px 14px 18px; }
   .admin-actions { grid-auto-flow: row; }
   .filters { grid-template-columns: 1fr; gap: 8px; }
-  .cards { grid-template-columns: 1fr; gap: 12px; }
+  .overview { grid-template-columns: 1fr; }
+  .overview-side { --carousel-height: 150px; }
   .panel { padding: 12px 14px; border-radius: 16px; }
 }

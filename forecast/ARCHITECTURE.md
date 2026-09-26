@@ -145,7 +145,8 @@ flowchart TD
 | `lib/time.ts` | `wallTime`、`dateKey`、`formatMDHM` 等 | 台灣時間（固定 UTC+8）的換算與格式化；不依賴瀏覽器或 Vercel 的時區 |
 | `lib/scope.ts` | `Scope`、`addRegion`、`withAvg` | 地區與縣市的篩選範圍：顯示層級、範圍內縣市、依範圍篩資料、圖表用的多系列長表 |
 | `lib/urlState.ts` | `scopeFromSearch`、`searchFromScope` | 篩選範圍 ↔ 網址參數（`?region=` 或 `?city=`），重新整理或分享網址後保留 |
-| `lib/summary.ts` | `summaryCards` | 四張摘要卡片的內容 |
+| `lib/summary.ts` | `summaryCards`、`summaryTitle` | 四張摘要卡片的內容；輪播最上方的範圍名稱（全部地區／被選的地區／被選的縣市） |
+| `lib/carousel.ts` | `wrapIndex`、`swipeStep`、`CAROUSEL_INTERVAL_MS` | 摘要輪播的換頁規則：頁碼頭尾相接、手指滑動方向、自動輪播間隔（4 秒） |
 | `lib/tables.ts` | `makeTable`、`nextPeriods`、`visibleColumns` | 明細表格與「後續時段」的資料整理 |
 | `lib/charts.ts` | `seriesChartSpec`、`CHART_HEIGHT` | 趨勢折線圖的 Vega-Lite 規格（monotone 曲線、圖例點選強調、門檻線、「現在」虛線）；單一縣市的三條溫度線合併並加漸層溫度帶；手機上圖例換行（`legendColumns`） |
 | `lib/mapView.ts` | `mapPoints`、`markerHtml`、`tooltipHtml`、`mapViewport` | 地圖的標記、提示框、圖例與視野（被選縣市放大） |
@@ -158,6 +159,7 @@ flowchart TD
 | `lib/updateApi.ts` | `fetchUpdateStatus`、`requestDispatch` | 呼叫 `api/`；連不上或回應不是 JSON 時一律不放行 |
 | `lib/admin.ts` | `AlertSettingsService`、`validate`、`translateError` | 告警設定的資料層：經資料庫函式讀寫、儲存前驗證、錯誤訊息遮蔽密碼 |
 | `lib/tooltipAutoHide.ts` | `installTooltipAutoHide` | 捲動或滑動時收起圖表提示框（手機沒有「滑鼠移開」） |
+| `lib/theme.ts` | `nextTheme`、`readTheme`、`applyTheme`、`initTheme` | 主題切換（自動／淺色／深色）：記在 localStorage、寫入 `<html data-theme>`、自動時跟著系統；`index.html` 載入前先套用一次 |
 
 ### 伺服器端（`web/api/` 與 `server/`，Vercel Functions）
 
@@ -178,10 +180,11 @@ flowchart TD
 | `App.tsx` | 入口元件；載入資料、保存篩選範圍、依序排出各區塊，不含商業邏輯 |
 | `hooks/useUpdateFlow.ts` | 「立即更新」的流程：查狀態、間隔倒數結束後自動再查、觸發後倒數 60 秒重新載入並確認是否完成 |
 | `hooks/useAdminSession.ts` | 告警設定的登入狀態與視窗流程；密碼只放在頁面記憶體（`useRef`），閒置 15 分鐘登出 |
-| `hooks/useDarkMode.ts` | `useDarkMode`、`useNarrow`：深色模式與手機寬度的即時判斷（圖表配色、圖例換行） |
+| `hooks/useDarkMode.ts` | `useThemeMode`、`useDarkMode`、`useNarrow`：目前的主題、實際是否為深色（圖表配色）、手機寬度（圖例換行） |
+| `components/ThemeToggle.tsx` | 主題按鈕（電腦版小圖示鈕、手機版在選單內顯示文字） |
 | `components/UpdateNotices.tsx` | 立即更新的提示、倒數與完成訊息 |
 | `components/Filters.tsx` | 地區與縣市互斥下拉選單 |
-| `components/SummaryCards.tsx` | 四張摘要卡片（發光邊框、降雨進度條、進場動畫） |
+| `components/SummaryCards.tsx` | 摘要輪播：四張卡片一次顯示一張（發光邊框、降雨進度條）；每 4 秒自動換頁，滑鼠移上去、鍵盤焦點或觸碰時暫停（滑鼠點擊留下的焦點不算），減少動態效果時照樣換頁但不播動畫；箭頭與圓點疊在卡片內、手機左右滑動 |
 | `components/MapSection.tsx`、`TemperatureMap.tsx` | 地圖區塊與 Leaflet 地圖本體（雙指／Ctrl 手勢；第一次顯示時才載入 Leaflet） |
 | `components/Tabs.tsx` | 分頁（只渲染目前的分頁） |
 | `components/Trends.tsx`、`VegaChart.tsx` | 氣溫趨勢與降雨機率分頁；Vega 圖表（第一次用到時才載入 vega-embed） |
@@ -197,13 +200,20 @@ flowchart TD
 
 ```text
 ┌──────────────────────────────────────────────────────────────┐
-│ [A] 🌤️ 台灣天氣預報   立即更新 │ 重新載入 │ 告警設定（手機收進 ☰） │
+│ [A] 🌤️ 台灣天氣預報  立即更新│重新載入│告警設定│🌓（手機收進 ☰）│
 │ [B] 立即更新的提示／倒數                                        │
-│ [C] 最近排程更新 … ｜ 最近手動更新 … ｜ 手動更新需間隔 20 分鐘    │
-│ [D] 地區 ▼                     縣市 ▼                          │
-│ [E] 預報時段 … ｜ 資料更新 …（過期時有警示）                    │
-│ [F] 平均氣溫 │ 最高溫 │ 最低溫 │ 降雨機率   （四張卡片）         │
-│ [G] 🗺️ 平均氣溫地圖                                            │
+│ （資料過期時的警示，整列寬度）                                  │
+│ ┌────────────────────┬─────────────────────────────────────┐ │
+│ │ [C] 最近排程更新 …  │ [G] 🗺️ 平均氣溫地圖                  │ │
+│ │     最近手動更新 …  │                                     │ │
+│ │ [E] 預報時段 …      │                                     │ │
+│ │     資料更新 …      │                                     │ │
+│ │ [D] 地區 ▼          │                                     │ │
+│ │     縣市 ▼          │                                     │ │
+│ │ [F] 摘要輪播        │                                     │ │
+│ │  ‹ ● ○ ○ ○ ›        │                                     │ │
+│ └────────────────────┴─────────────────────────────────────┘ │
+│    （手機上改為上下排列：篩選 → 輪播 → 地圖）                  │
 │ [H] 氣溫趨勢 │ 降雨機率 │ 明細 │ 後續時段 │ 日期查詢  （分頁）  │
 │ [彈出] 🔒 登入／⚙️ 告警設定視窗、右下角浮動提示                  │
 └──────────────────────────────────────────────────────────────┘
@@ -211,12 +221,12 @@ flowchart TD
 
 | 區塊 | 畫面內容 | 程式位置 |
 | :---: | :--- | :--- |
-| A | 標題與三顆按鈕（手機收進「☰ 選單」） | `App.tsx` 的 `<header>` |
+| A | 標題、三顆按鈕與主題按鈕（手機收進「☰ 選單」） | `App.tsx` 的 `<header>`；主題按鈕在 `components/ThemeToggle.tsx` |
 | B | 更新提示、間隔倒數、完成訊息 | `components/UpdateNotices.tsx`（狀態在 `hooks/useUpdateFlow.ts`） |
-| C | 最近更新時間 | `App.tsx` 的 `statusLine` |
-| D | 地區、縣市下拉（互斥） | `components/Filters.tsx` |
-| E | 預報時段與過期警示 | `App.tsx` 的 `Dashboard` |
-| F | 四張摘要卡片 | `components/SummaryCards.tsx`（內容在 `lib/summary.ts`） |
+| C | 最近更新時間（左欄最上方，每項一行） | `App.tsx` 的 `statusItems` |
+| D | 地區、縣市下拉（互斥），在地圖左側 | `components/Filters.tsx`；兩欄版面在 `App.tsx` 的 `.overview` |
+| E | 預報時段與資料更新（左欄，[C] 下方）；過期警示在整列寬度 | `App.tsx` 的 `Dashboard` |
+| F | 摘要輪播（地圖左側、篩選下方） | `components/SummaryCards.tsx`（內容在 `lib/summary.ts`，換頁規則在 `lib/carousel.ts`） |
 | G | 地圖 | `components/MapSection.tsx`（地圖本體在 `TemperatureMap.tsx`） |
 | H | 五個分頁 | `App.tsx` 的 `tabs`；內容在 `Trends.tsx`、`TableTabs.tsx`、`DateQueryTab.tsx` |
 | 彈出 | 告警設定視窗 | `components/AdminDialogs.tsx`（狀態在 `hooks/useAdminSession.ts`） |
@@ -225,7 +235,7 @@ flowchart TD
 
 | 想調的 | 位置 |
 | :--- | :--- |
-| 顏色、間距、圓角、玻璃效果、手機版（≤ 640px）行為 | `styles/global.css`（`:root` 的變數；深色模式在 `prefers-color-scheme: dark` 內覆寫） |
+| 顏色、間距、圓角、玻璃效果、手機版（≤ 640px）行為 | `styles/global.css`（`:root` 的變數；深色模式在 `:root[data-theme="dark"]` 覆寫） |
 | 圖表顏色（Vega 讀不到 CSS 變數） | `lib/charts.ts` 的 `LIGHT_CHART`／`DARK_CHART`、`PALETTE` |
 | 圖表／地圖高度 | `lib/charts.ts` 的 `CHART_HEIGHT`、`components/MapSection.tsx` 的 `MAP_HEIGHT` |
 | 表格欄位與格式 | `lib/tables.ts`（欄位與順序）、`components/ForecastTable.tsx`（格式）、`lib/scope.ts` 的 `tableDropColumns`（依範圍隱藏） |

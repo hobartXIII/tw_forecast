@@ -5,7 +5,7 @@ import { rainColor } from "../src/lib/rain";
 import { ALL_REGIONS } from "../src/lib/regions";
 import { toForecastRow } from "../src/lib/repository";
 import { Scope, addRegion, withAvg } from "../src/lib/scope";
-import { extreme, summaryCards } from "../src/lib/summary";
+import { extreme, summaryCards, tempRange, widestRange } from "../src/lib/summary";
 import { tempColor } from "../src/lib/temperature";
 import { dateLabel } from "../src/lib/time";
 import { scopeFromSearch, searchFromScope } from "../src/lib/urlState";
@@ -18,10 +18,16 @@ const cur = () => {
 };
 
 describe("summaryCards", () => {
-  it("全台：平均與極值，標出縣市", () => {
+  it("全台：平均、最高／最低溫（標出兩個縣市）、最大溫差（標出縣市）、最高降雨機率", () => {
     const cards = summaryCards(cur(), new Scope());
-    expect(cards.map((c) => c.label)).toEqual(["平均氣溫", "最高溫　連江縣", "最低溫　臺北市", "最高降雨機率　連江縣"]);
-    expect(cards[1].accent).toBe(tempColor(24 + 21 * 0.5));
+    expect(cards.map((c) => c.label)).toEqual(["平均氣溫", "最高／最低溫", "最大溫差　臺北市", "最高降雨機率　連江縣"]);
+    const high = 24 + 21 * 0.5; // 連江縣（最後一個）最熱
+    expect(cards[1].text).toBe(`${high.toFixed(0)} / 18 °C`);
+    expect(cards[1].parts!.map((p) => p.text)).toEqual([high.toFixed(0), "18 °C"]);
+    expect(cards[1].sub).toBe("連江縣 / 臺北市");
+    expect(cards[1].accent).toBe(tempColor(high));
+    expect(cards[2].text).toBe("6 °C"); // 每個縣市的溫差都是 6，取第一個
+    expect(cards[2].accent).toBe("");
     expect(cards[3].meter).toBe(21);
     expect(cards[3].accent).toBe(rainColor(21));
     expect(cards[3].textColor).toBe(""); // 降雨數字不上色
@@ -29,17 +35,29 @@ describe("summaryCards", () => {
 
   it("單一縣市：該縣市的數值，平均氣溫旁顯示天氣", () => {
     const cards = summaryCards(cur(), new Scope(ALL_REGIONS, "臺北市"));
-    expect(cards[0].label).toBe("臺北市 平均氣溫");
+    expect(cards[0].label).toBe("平均氣溫"); // 縣市名顯示在輪播最上方
     expect(cards[0].text).toBe("21.0 °C");
     expect(cards[0].aside).toBe("☀️ 晴");
-    expect(cards.slice(1).map((c) => c.label)).toEqual(["最高溫", "最低溫", "降雨機率"]);
+    expect(cards.slice(1).map((c) => c.label)).toEqual(["最高／最低溫", "溫差", "降雨機率"]);
+    expect(cards[1].text).toBe("24 / 18 °C");
+    expect(cards[1].sub).toBeUndefined(); // 單一縣市不用標縣市
+    expect(cards[2].text).toBe("6 °C");
   });
 
   it("沒有值時顯示「—」且不發光", () => {
     const rows = cur().map((r) => ({ ...r, max_temp: null, rain_probability: null }));
     const cards = summaryCards(rows, new Scope());
-    expect([cards[1].label, cards[1].text, cards[1].accent]).toEqual(["最高溫", "—", ""]);
+    expect([cards[1].text, cards[1].accent, cards[1].parts?.[0].text]).toEqual(["— / 18 °C", "", "—"]);
+    expect([cards[2].label, cards[2].text]).toEqual(["最大溫差", "—"]); // 沒有最高溫就算不出溫差
     expect(cards[3].meter).toBeNull();
+  });
+
+  it("溫差：單一縣市的高低溫差；多縣市取最大的一個", () => {
+    expect(tempRange({ max_temp: 30, min_temp: 22 })).toBe(8);
+    expect(tempRange({ max_temp: null, min_temp: 22 })).toBeNull();
+    const rows = cur().map((r, i) => ({ ...r, max_temp: 30, min_temp: i === 3 ? 20 : 25 }));
+    expect(widestRange(rows)).toEqual({ value: 10, city: rows[3].location_name });
+    expect(widestRange(rows.map((r) => ({ ...r, min_temp: null })))).toEqual({ value: null, city: "" });
   });
 
   it("extreme 同值取先出現的一筆", () => {

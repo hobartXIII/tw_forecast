@@ -1,7 +1,9 @@
 /** 儀表板（對應 Streamlit 版的 streamlit_app/app.py）。
 
-由上而下：[A] 標題與按鈕（手機版收進「☰ 選單」）、[B] 立即更新的提示與倒數、[C] 最近更新時間、[D] 地區／縣市篩選、[E] 預報時段與過期警示、
-[F] 摘要卡片、[G] 地圖、[H] 分頁；另有告警設定的登入／設定視窗與右下角的浮動提示。
+由上而下：[A] 標題與按鈕（立即更新、重新載入、告警設定、主題；手機版收進「☰ 選單」）、[B] 立即更新的提示與倒數、過期警示、
+左右兩欄（左：[C] 最近更新時間與 [E] 預報時段（每項一行）、[D] 地區／縣市篩選、[F] 摘要輪播；右：[G] 地圖；
+手機上改為上下排列）、[H] 分頁；
+另有告警設定的登入／設定視窗與右下角的浮動提示。
 資料在載入頁面與按「重新載入資料」時從 Supabase 重新查詢（不快取）；篩選只在瀏覽器端重新整理資料，不重新查詢。
 */
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -13,6 +15,7 @@ import { MapSection } from "./components/MapSection";
 import { Notice } from "./components/Notice";
 import { SummaryCards } from "./components/SummaryCards";
 import { NextTab, TableTab } from "./components/TableTabs";
+import { ThemeToggle } from "./components/ThemeToggle";
 import { useToast } from "./components/Toast";
 import { Tabs, type TabItem } from "./components/Tabs";
 import { RainTab, TemperatureTab } from "./components/Trends";
@@ -22,7 +25,7 @@ import { useUpdateFlow } from "./hooks/useUpdateFlow";
 import { formatLastUpdate, formatRange } from "./lib/formatting";
 import { ForecastQuery, type StatusRow } from "./lib/repository";
 import { addRegion, withAvg, type CityRow, type Scope } from "./lib/scope";
-import { summaryCards } from "./lib/summary";
+import { summaryCards, summaryTitle } from "./lib/summary";
 import { supabase } from "./lib/supabase";
 import { formatMDHM } from "./lib/time";
 import { MIN_INTERVAL_MINUTES } from "./lib/updateGate";
@@ -94,6 +97,7 @@ export default function App() {
             {reloading ? "⏳ 載入中…" : "♻️ 重新載入資料"}
           </button>
           <button type="button" onClick={act(admin.open)} disabled={!query || admin.busy}>⚙️ 告警設定</button>
+          <ThemeToggle />{/* 不收起選單：手機上可以連按切換 */}
         </div>
       </header>
       <AdminDialogs session={admin} />
@@ -120,19 +124,22 @@ function Dashboard({ loaded, scope, onScopeChange, query }: {
   const cur = useMemo(() => withAvg(scope.filterCurrent(current)), [scope, current]);
   const fc = useMemo(() => scope.filterForecast(forecast), [scope, forecast]);
 
-  const statusLine = status && (
-    <p className="caption">
-      最近排程更新 {formatLastUpdate(status, "schedule")}　｜　最近手動更新 {formatLastUpdate(status, "manual")}
-      {`　｜　手動更新需間隔 ${MIN_INTERVAL_MINUTES} 分鐘`}
-    </p>
-  );
+  // [C] 最近更新時間：左欄較窄，每項一行（讀不到 pipeline_status 時不顯示）
+  const statusItems = status ? [
+    <li key="schedule">最近排程更新 {formatLastUpdate(status, "schedule")}</li>,
+    <li key="manual">最近手動更新 {formatLastUpdate(status, "manual")}</li>,
+    <li key="interval">手動更新需間隔 {MIN_INTERVAL_MINUTES} 分鐘</li>,
+  ] : [];
+  const statusLine = statusItems.length > 0 && <ul className="info-lines">{statusItems}</ul>;
 
   if (!current.length) {
     return <>{statusLine}<Notice kind="warning">資料庫目前沒有預報資料，請先執行流程一（GitHub Actions）。</Notice></>;
   }
 
+  const filters = <Filters scope={scope} onChange={onScopeChange} />; // [D]
+
   const body = () => {
-    if (!cur.length) return <Notice kind="warning">此範圍目前沒有資料。</Notice>;
+    if (!cur.length) return <>{statusLine}{filters}<Notice kind="warning">此範圍目前沒有資料。</Notice></>;
     const start = cur[0].forecast_time_start;
     const end = cur[0].forecast_time_end;
     const updated = new Date(Math.max(...cur.map((r) => r.updated_at.getTime())));
@@ -145,27 +152,30 @@ function Dashboard({ loaded, scope, onScopeChange, query }: {
     ];
     return (
       <>
-        {/* [E] 預報時段與資料更新時間；目前時間不在該時段內時顯示過期警示 */}
-        <p className="caption">
-          預報時段 <b>{formatRange(start, end)}</b>　｜　資料更新 <b>{formatMDHM(updated)}</b>　｜　時間皆為台灣時間
-        </p>
+        {/* 目前時間不在預報時段內時顯示過期警示（整列寬度，比較醒目） */}
         {!(start <= now && now < end) && (
           <Notice kind="warning">
             目前沒有涵蓋此刻的預報時段，顯示的是最接近的時段。資料可能已過期，可按「立即更新」。
           </Notice>
         )}
-        <SummaryCards cards={summaryCards(cur, scope)} />{/* [F] */}
-        <MapSection cur={cur} scope={scope} />{/* [G] */}
+        <div className="overview">
+          <div className="overview-side">
+            {/* [C] 最近更新時間 + [E] 預報時段與資料更新時間，放在地區下拉選單上方 */}
+            <ul className="info-lines">
+              {statusItems}
+              <li>預報時段 <b>{formatRange(start, end)}</b></li>
+              <li>資料更新 <b>{formatMDHM(updated)}</b></li>
+              <li>時間皆為台灣時間</li>
+            </ul>
+            {filters}
+            <SummaryCards key={scope.label} title={summaryTitle(scope)} cards={summaryCards(cur, scope)} />{/* [F] 換範圍時回到第一張 */}
+          </div>
+          <MapSection cur={cur} scope={scope} />{/* [G] */}
+        </div>
         <section className="panel"><Tabs items={tabs} /></section>{/* [H] */}
       </>
     );
   };
 
-  return (
-    <>
-      {statusLine}{/* [C] */}
-      <Filters scope={scope} onChange={onScopeChange} />{/* [D] */}
-      {body()}
-    </>
-  );
+  return body();
 }

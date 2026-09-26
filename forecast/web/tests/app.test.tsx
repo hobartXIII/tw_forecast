@@ -54,7 +54,9 @@ vi.mock("../src/components/TemperatureMap", () => ({ // jsdom 不能真的畫 Le
 }));
 
 import App from "../src/App";
+import { DARK_CHART, LIGHT_CHART } from "../src/lib/charts";
 import { CITY_ORDER } from "../src/lib/regions";
+import { THEME_KEY, setTheme } from "../src/lib/theme";
 
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ["Date"] });
@@ -78,6 +80,8 @@ beforeEach(() => {
     const body = url === "/api/dispatch" ? api.dispatch : api.status;
     return new Response(JSON.stringify(body), { headers: { "content-type": "application/json" } });
   }));
+  localStorage.clear();
+  setTheme("auto"); // 主題是整頁共用的狀態，每項測試都從「自動」開始
   window.matchMedia = vi.fn().mockReturnValue({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() });
 });
 
@@ -144,7 +148,7 @@ describe("App", () => {
     render(<App />);
     await screen.findAllByRole("tab");
     expect(select("縣市").value).toBe("臺東縣");
-    expect(screen.getByText("臺東縣 平均氣溫")).toBeTruthy();
+    expect(document.querySelector('.carousel-slide[aria-hidden="false"] .card-scope')!.textContent).toBe("臺東縣");
   });
 
   it("明細與後續時段分頁顯示表格", async () => {
@@ -410,3 +414,170 @@ describe("告警設定", () => {
     expect(toggle.getAttribute("aria-expanded")).toBe("false");
   });
 });
+
+describe("摘要輪播", () => {
+  /** 目前顯示的卡片（沒有 aria-hidden 的那張）的標題。 */
+  const shown = () => document.querySelector('.carousel-slide[aria-hidden="false"] .card-label')!.textContent;
+  const scopeTitle = () => document.querySelector('.carousel-slide[aria-hidden="false"] .card-scope')!.textContent;
+  const useTimers = () => {
+    vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout", "setInterval", "clearInterval"] });
+    vi.setSystemTime(NOW);
+  };
+  const flush = () => act(async () => { await vi.advanceTimersByTimeAsync(0); });
+
+  it("篩選與輪播在地圖左側（同一個兩欄區塊），四張卡片一次顯示一張", async () => {
+    render(<App />);
+    await screen.findAllByRole("tab");
+    const side = document.querySelector(".overview .overview-side")!;
+    expect(within(side as HTMLElement).getByLabelText("地區")).toBeTruthy();
+    expect(side.querySelector(".carousel")).toBeTruthy();
+    expect(document.querySelector(".overview .map-panel")).toBeTruthy();
+    expect(document.querySelectorAll('.carousel-slide[aria-hidden="false"]')).toHaveLength(1);
+    expect(shown()).toBe("平均氣溫");
+  });
+
+  it("箭頭與圓點切換，頭尾相接", async () => {
+    render(<App />);
+    await screen.findAllByRole("tab");
+    fireEvent.click(screen.getByRole("button", { name: "上一張" }));
+    expect(shown()).toMatch(/^最高降雨機率/);
+    fireEvent.click(screen.getByRole("button", { name: "下一張" }));
+    expect(shown()).toBe("平均氣溫");
+    fireEvent.click(screen.getByRole("button", { name: /^顯示最大溫差/ }));
+    expect(shown()).toMatch(/^最大溫差/);
+  });
+
+  it("每 4 秒自動換下一張；滑鼠移上去暫停", async () => {
+    useTimers();
+    render(<App />);
+    await flush();
+    expect(shown()).toBe("平均氣溫");
+    await act(async () => { await vi.advanceTimersByTimeAsync(4000); });
+    expect(shown()).toMatch(/^最高／最低溫/);
+    fireEvent.mouseEnter(document.querySelector(".carousel")!);
+    await act(async () => { await vi.advanceTimersByTimeAsync(12_000); });
+    expect(shown()).toMatch(/^最高／最低溫/);
+    fireEvent.mouseLeave(document.querySelector(".carousel")!);
+    await act(async () => { await vi.advanceTimersByTimeAsync(4000); });
+    expect(shown()).toMatch(/^最大溫差/);
+  });
+
+  it("系統設定減少動態效果時照樣自動換頁（只取消動畫）", async () => {
+    window.matchMedia = vi.fn((q: string) => ({
+      matches: q.includes("reduced-motion"), addEventListener: vi.fn(), removeEventListener: vi.fn(),
+    })) as never;
+    useTimers();
+    render(<App />);
+    await flush();
+    await act(async () => { await vi.advanceTimersByTimeAsync(4000); });
+    expect(shown()).toMatch(/^最高／最低溫/);
+  });
+
+  it("用滑鼠按過箭頭後（焦點留在按鈕上）仍會自動換頁", async () => {
+    useTimers();
+    render(<App />);
+    await flush();
+    const next = screen.getByRole("button", { name: "下一張" });
+    next.focus(); // 真實瀏覽器點擊後焦點留在按鈕上，但不是 :focus-visible
+    fireEvent.click(next);
+    expect(shown()).toMatch(/^最高／最低溫/);
+    await act(async () => { await vi.advanceTimersByTimeAsync(4000); });
+    expect(shown()).toMatch(/^最大溫差/);
+  });
+
+  it("最近更新時間與預報時段在左欄、地區選單上方，每項一行", async () => {
+    render(<App />);
+    await screen.findAllByRole("tab");
+    const side = document.querySelector(".overview-side")!;
+    const lines = [...side.querySelectorAll(".info-lines li")].map((li) => li.textContent);
+    expect(lines).toEqual([
+      "最近排程更新 09/21 09:30", "最近手動更新 09/21 08:00", "手動更新需間隔 20 分鐘",
+      "預報時段 09/21 06:00 ~ 09/21 18:00", "資料更新 09/21 09:30", "時間皆為台灣時間",
+    ]);
+    const info = side.querySelector(".info-lines")!;
+    const region = within(side as HTMLElement).getByLabelText("地區");
+    expect(info.compareDocumentPosition(region) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("箭頭與圓點在輪播方塊內", async () => {
+    render(<App />);
+    await screen.findAllByRole("tab");
+    const carousel = document.querySelector(".carousel")!;
+    expect(within(carousel as HTMLElement).getByRole("button", { name: "上一張" })).toBeTruthy();
+    expect(carousel.querySelectorAll(".carousel-dot")).toHaveLength(4);
+  });
+
+  it("最上方顯示範圍名稱：全部地區、被選的地區，或被選的縣市（每張卡片都有）", async () => {
+    render(<App />);
+    await screen.findAllByRole("tab");
+    expect(scopeTitle()).toBe("全部地區");
+    fireEvent.change(select("地區"), { target: { value: "東部地區" } });
+    expect(scopeTitle()).toBe("東部地區");
+    fireEvent.change(select("縣市"), { target: { value: "臺中市" } });
+    const titles = [...document.querySelectorAll(".carousel .card-scope")].map((e) => e.textContent);
+    expect(titles).toEqual(["臺中市", "臺中市", "臺中市", "臺中市"]);
+    expect([...document.querySelectorAll(".carousel .card-label")].map((e) => e.textContent))
+      .toEqual(["平均氣溫", "最高／最低溫", "溫差", "降雨機率"]);
+  });
+
+  it("切換地區或縣市時回到第一張", async () => {
+    render(<App />);
+    await screen.findAllByRole("tab");
+    fireEvent.click(screen.getByRole("button", { name: "下一張" }));
+    expect(shown()).toMatch(/^最高／最低溫/);
+    fireEvent.change(select("縣市"), { target: { value: "臺北市" } });
+    expect(shown()).toBe("平均氣溫");
+    expect(scopeTitle()).toBe("臺北市");
+  });
+
+  it("手機左右滑動換頁", async () => {
+    render(<App />);
+    await screen.findAllByRole("tab");
+    const carousel = document.querySelector(".carousel")!;
+    fireEvent.touchStart(carousel, { touches: [{ clientX: 200, clientY: 100 }] });
+    fireEvent.touchEnd(carousel, { changedTouches: [{ clientX: 100, clientY: 105 }] });
+    expect(shown()).toMatch(/^最高／最低溫/);
+    fireEvent.touchStart(carousel, { touches: [{ clientX: 100, clientY: 100 }] });
+    fireEvent.touchEnd(carousel, { changedTouches: [{ clientX: 220, clientY: 100 }] });
+    expect(shown()).toBe("平均氣溫");
+  });
+});
+
+describe("主題切換", () => {
+  const toggle = () => screen.getByRole("button", { name: /^主題：/ });
+  const chartText = () => JSON.parse(screen.getByTestId("chart").textContent!).config.axis.labelColor;
+
+  it("依序切換自動 → 淺色 → 深色 → 自動，<html> 與圖表配色跟著換，選擇會被記住", async () => {
+    window.matchMedia = vi.fn().mockReturnValue({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() });
+    setTheme("auto");
+    render(<App />);
+    await screen.findAllByRole("tab");
+    expect(toggle().getAttribute("aria-label")).toBe("主題：自動（跟著系統）（點一下切換為淺色）");
+    expect(document.documentElement.dataset.theme).toBe("light"); // 系統是淺色
+    expect(chartText()).toBe(LIGHT_CHART.text);
+
+    fireEvent.click(toggle());
+    expect(toggle().getAttribute("aria-label")).toMatch(/^主題：淺色/);
+    expect(localStorage.getItem(THEME_KEY)).toBe("light");
+
+    fireEvent.click(toggle());
+    expect(document.documentElement.dataset.theme).toBe("dark");
+    expect(localStorage.getItem(THEME_KEY)).toBe("dark");
+    expect(chartText()).toBe(DARK_CHART.text);
+
+    fireEvent.click(toggle());
+    expect(toggle().getAttribute("aria-label")).toMatch(/^主題：自動/);
+    expect(localStorage.getItem(THEME_KEY)).toBeNull();
+    expect(document.documentElement.dataset.theme).toBe("light");
+  });
+
+  it("手機選單裡按主題按鈕不會收起選單（可以連按）", async () => {
+    render(<App />);
+    await screen.findAllByRole("tab");
+    const menu = screen.getByRole("button", { name: "☰ 選單" });
+    fireEvent.click(menu);
+    fireEvent.click(toggle());
+    expect(menu.getAttribute("aria-expanded")).toBe("true");
+  });
+});
+
