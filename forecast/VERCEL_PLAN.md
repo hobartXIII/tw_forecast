@@ -4,7 +4,7 @@
 目前的前端架構見 [ARCHITECTURE.md](ARCHITECTURE.md)，需求與規格見 [SPECIFICATION.md](SPECIFICATION.md)。
 
 - **建立日期**：2026-09-25
-- **狀態**：階段 0 完成（2026-09-25 Vercel 部署成功並讀到資料庫）；階段 1 完成（資料層與純函式移植）；階段 2 完成（唯讀畫面）；階段 3 完成（地圖）；階段 4 完成（視覺細修，Vitest 132 項）；階段 5（立即更新）程式完成、待 Vercel 實測
+- **狀態**：階段 0 完成（2026-09-25 Vercel 部署成功並讀到資料庫）；階段 1 完成（資料層與純函式移植）；階段 2 完成（唯讀畫面）；階段 3 完成（地圖）；階段 4 完成（視覺細修，Vitest 132 項）；階段 5 完成（立即更新，2026-09-26 Vercel 實測通過，Vitest 152 項）；下一步階段 6（告警設定）
 
 ## 1. 已確定的決定
 
@@ -125,9 +125,9 @@ forecast/
 | 1 資料層與純函式 | ✅ 完成 | `b233df9` |
 | 2 唯讀畫面 | ✅ 完成 | `9eaced8` |
 | 3 地圖 | ✅ 完成 | `d0ca351` |
-| 4 視覺細修 | ✅ 完成 | 見 git log |
-| **5 立即更新** | **程式完成，待 Vercel 設定環境變數後實測** | — |
-| 6 告警設定 | 未開始 | — |
+| 4 視覺細修 | ✅ 完成 | `a32638c` |
+| 5 立即更新 | ✅ 完成（Vercel 實測通過） | `719e2e4` |
+| **6 告警設定** | **⏭️ 下一步** | — |
 | 7 文件與切換 | 未開始 | — |
 
 `streamlit` 分支（Community Cloud 部署）：已關閉立即更新（v1.16.0，`0b15eea`）、修正地圖 Ctrl 提示一閃即逝（v1.16.1，`d071f90`）。
@@ -138,13 +138,13 @@ forecast/
 - 手機：圖例每列最多 3 項（`seriesChartSpec` 的 `legendColumns`）；捲動或滑動時收起 Vega 提示框（`lib/tooltipAutoHide.ts`）
 - 手機版的「☰ 選單」等到階段 5 標題列有多顆按鈕時再加
 
-### 階段 5 立即更新（程式完成，待實測）
+### 階段 5 立即更新（完成）
 
 - 伺服器端邏輯在 `web/src/server/updateService.ts`（`getUpdateStatus`、`dispatchUpdate`、`maskSecrets`），`api/update-status.ts`（GET）、`api/dispatch.ts`（POST）只負責串接；`api/` 以 Node ESM 執行，相對匯入寫 `.js` 副檔名
 - 瀏覽器端：`lib/updateApi.ts`（呼叫 api/，失敗一律不放行）、`hooks/useUpdateFlow.ts`（流程狀態）、`components/UpdateNotices.tsx`（提示與倒數）
 - 過期提示的文字已改回「請按『立即更新』」
 - 手機版標題列目前是兩顆按鈕並排；階段 6 加入「⚙️ 告警設定」後再決定是否改成「☰ 選單」
-- **實測步驟**：Vercel → Settings → Environment Variables 加 `GH_REPO`（`hobartXIII/tw_forecast`）、`GH_DISPATCH_TOKEN`（不可加 `VITE_` 前綴）→ push `main` 觸發部署 → 按一次「立即更新」，確認：按鈕變「更新中…」並倒數 60 秒、另一個分頁／F5 後按鈕仍停用（GitHub 上有未完成的手動 run）、完成後顯示「資料已更新完成」與 20 分鐘間隔倒數
+- **實測（2026-09-26 通過）**：Vercel → Settings → Environment Variables 加 `GH_REPO`（`hobartXIII/tw_forecast`）、`GH_DISPATCH_TOKEN`（不可加 `VITE_` 前綴）→ push `main` 觸發部署 → 按一次「立即更新」，確認：按鈕變「更新中…」並倒數 60 秒、另一個分頁／F5 後按鈕仍停用（GitHub 上有未完成的手動 run）、完成後顯示「資料已更新完成」與 20 分鐘間隔倒數
 
 ### 之後的待辦
 
@@ -171,5 +171,6 @@ npm run build                   # 型別檢查 → 測試 → 打包（Vercel �
 
 - **在 `streamlit` 分支 commit 時不要用 `git add -A`**：`forecast/web/` 在該分支沒有被 `.gitignore` 排除，硬碟上的 `node_modules`、`dist`、`.env.local`（含金鑰）會被加進去。一律指定檔案路徑。
 - 在 `main` 上的 Python 前端（`src/tw_forecast/frontend/`、`streamlit_app/`）已凍結，不再修改；要改 Streamlit 版就到 `streamlit` 分支改。
+- Vercel 環境變數一律選 **Config**：選 Secret 的變數在 Function 執行時讀不到（2026-09-26 `GH_DISPATCH_TOKEN` 設成 Secret 時 `/api/update-status` 一直回「尚未設定」，改成 Config 並 Redeploy 後正常）。token 雖是 Config，只有 `api/` 讀取且訊息會遮蔽；不可取 `VITE_` 開頭的名稱
 - Vercel 的環境變數改了之後要 Redeploy 才生效（`VITE_` 變數是建置時打包進去的）；值不要加引號、貼上前把輸入法切成英文。
 - 本機用 `npx vite` 起的開發伺服器，停止時要確認 5173 埠已釋放（背景工作被停止時子行程可能還在）。
