@@ -1,20 +1,23 @@
 /** 儀表板（對應 Streamlit 版的 streamlit_app/app.py）。
 
-由上而下：[A] 標題與按鈕、[B] 立即更新的提示與倒數、[C] 最近更新時間、[D] 地區／縣市篩選、[E] 預報時段與過期警示、
-[F] 摘要卡片、[G] 地圖、[H] 分頁。
+由上而下：[A] 標題與按鈕（手機版收進「☰ 選單」）、[B] 立即更新的提示與倒數、[C] 最近更新時間、[D] 地區／縣市篩選、[E] 預報時段與過期警示、
+[F] 摘要卡片、[G] 地圖、[H] 分頁；另有告警設定的登入／設定視窗與右下角的浮動提示。
 資料在載入頁面與按「重新載入資料」時從 Supabase 重新查詢（不快取）；篩選只在瀏覽器端重新整理資料，不重新查詢。
 */
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { AdminDialogs } from "./components/AdminDialogs";
 import { DateQueryTab } from "./components/DateQueryTab";
 import { Filters } from "./components/Filters";
 import { MapSection } from "./components/MapSection";
 import { Notice } from "./components/Notice";
 import { SummaryCards } from "./components/SummaryCards";
 import { NextTab, TableTab } from "./components/TableTabs";
+import { useToast } from "./components/Toast";
 import { Tabs, type TabItem } from "./components/Tabs";
 import { RainTab, TemperatureTab } from "./components/Trends";
 import { UpdateNotices } from "./components/UpdateNotices";
+import { useAdminSession } from "./hooks/useAdminSession";
 import { useUpdateFlow } from "./hooks/useUpdateFlow";
 import { formatLastUpdate, formatRange } from "./lib/formatting";
 import { ForecastQuery, type StatusRow } from "./lib/repository";
@@ -62,6 +65,10 @@ export default function App() {
   useEffect(reload, [reload]);
   const update = useUpdateFlow(reload);
   const updating = update.dispatching || update.refreshAt !== null;
+  const toast = useToast();
+  const admin = useAdminSession(supabase, toast.show);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const act = (fn: () => void) => () => { setMenuOpen(false); fn(); }; // 手機版按下選單裡的按鈕後收起選單
 
   const changeScope = (next: Scope) => {
     setScope(next);
@@ -73,15 +80,24 @@ export default function App() {
       {/* [A] 標題與按鈕 */}
       <header className="page-header">
         <h1>🌤️ 台灣天氣預報</h1>
-        <div className="header-actions">
-          <button type="button" onClick={update.trigger} disabled={updating || !update.status?.allowed}>
+        <button
+          type="button" className="menu-toggle" aria-expanded={menuOpen} aria-controls="header-actions"
+          onClick={() => setMenuOpen(!menuOpen)}
+        >
+          ☰ 選單
+        </button>
+        <div id="header-actions" className={`header-actions${menuOpen ? " open" : ""}`}>
+          <button type="button" onClick={act(update.trigger)} disabled={updating || !update.status?.allowed}>
             {updating ? "⏳ 更新中…" : "🔄 立即更新"}
           </button>
-          <button type="button" onClick={update.reloadAll} disabled={!query || reloading}>
+          <button type="button" onClick={act(update.reloadAll)} disabled={!query || reloading}>
             {reloading ? "⏳ 載入中…" : "♻️ 重新載入資料"}
           </button>
+          <button type="button" onClick={act(admin.open)} disabled={!query || admin.busy}>⚙️ 告警設定</button>
         </div>
       </header>
+      <AdminDialogs session={admin} />
+      {toast.node}
       <UpdateNotices flow={update} />{/* [B] */}
 
       {!query ? (

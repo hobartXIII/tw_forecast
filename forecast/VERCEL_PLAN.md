@@ -4,7 +4,7 @@
 目前的前端架構見 [ARCHITECTURE.md](ARCHITECTURE.md)，需求與規格見 [SPECIFICATION.md](SPECIFICATION.md)。
 
 - **建立日期**：2026-09-25
-- **狀態**：階段 0 完成（2026-09-25 Vercel 部署成功並讀到資料庫）；階段 1 完成（資料層與純函式移植）；階段 2 完成（唯讀畫面）；階段 3 完成（地圖）；階段 4 完成（視覺細修，Vitest 132 項）；階段 5 完成（立即更新，2026-09-26 Vercel 實測通過，Vitest 152 項）；下一步階段 6（告警設定）
+- **狀態**：階段 0 完成（2026-09-25 Vercel 部署成功並讀到資料庫）；階段 1 完成（資料層與純函式移植）；階段 2 完成（唯讀畫面）；階段 3 完成（地圖）；階段 4 完成（視覺細修，Vitest 132 項）；階段 5 完成（立即更新，2026-09-26 Vercel 實測通過，Vitest 152 項）；階段 6 完成（告警設定，2026-09-26 本機以真實密碼實測通過，Vitest 182 項）；下一步階段 7（文件與切換）
 
 ## 1. 已確定的決定
 
@@ -127,8 +127,8 @@ forecast/
 | 3 地圖 | ✅ 完成 | `d0ca351` |
 | 4 視覺細修 | ✅ 完成 | `a32638c` |
 | 5 立即更新 | ✅ 完成（Vercel 實測通過） | `719e2e4` |
-| **6 告警設定** | **⏭️ 下一步** | — |
-| 7 文件與切換 | 未開始 | — |
+| 6 告警設定 | ✅ 完成（真實密碼實測通過） | 見 git log |
+| **7 文件與切換** | **⏭️ 下一步** | — |
 
 `streamlit` 分支（Community Cloud 部署）：已關閉立即更新（v1.16.0，`0b15eea`）、修正地圖 Ctrl 提示一閃即逝（v1.16.1，`d071f90`）。
 
@@ -146,9 +146,16 @@ forecast/
 - 手機版標題列目前是兩顆按鈕並排；階段 6 加入「⚙️ 告警設定」後再決定是否改成「☰ 選單」
 - **實測（2026-09-26 通過）**：Vercel → Settings → Environment Variables 加 `GH_REPO`（`hobartXIII/tw_forecast`）、`GH_DISPATCH_TOKEN`（不可加 `VITE_` 前綴）→ push `main` 觸發部署 → 按一次「立即更新」，確認：按鈕變「更新中…」並倒數 60 秒、另一個分頁／F5 後按鈕仍停用（GitHub 上有未完成的手動 run）、完成後顯示「資料已更新完成」與 20 分鐘間隔倒數
 
+### 階段 6 告警設定（完成）
+
+- 密碼保存採 §6 的方式 A：只放在頁面記憶體（`useRef`），不寫入 localStorage；閒置 15 分鐘、登出、關閉或重新整理分頁即清除
+- `lib/admin.ts`（對應 `admin.py`：錯誤轉換遮蔽密碼、驗證、參數、`AlertSettingsService`）、`hooks/useAdminSession.ts`（登入狀態與視窗流程，對應 `admin_ui.py`）、`components/AdminDialogs.tsx`（登入與設定視窗）、`components/Modal.tsx`（原生 `<dialog>`）、`components/Toast.tsx`
+- 連續登入失敗越多次，下次送出前等越久（最多 5 秒，資料庫另有 1 秒延遲）
+- 手機版標題列的三顆按鈕收進「☰ 選單」
+- **實測（2026-09-26 本機通過）**：以真實密碼登入、修改一個值並儲存，再到 Supabase 或重新開啟視窗確認；最後改回原本的設定
+
 ### 之後的待辦
 
-- 階段 6 告警設定：先決定密碼保存方式（§6）
 - 使用者待辦：
   - Streamlit Cloud 的 Secrets 可刪除 `GH_REPO`、`GH_DISPATCH_TOKEN`（token 本身保留，Vercel 版要用）
   - 在 Streamlit 版電腦上確認「按住 Ctrl」提示會停留約 1 秒（v1.16.1）

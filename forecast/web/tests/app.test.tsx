@@ -19,10 +19,30 @@ const allowed = (extra: Record<string, unknown> = {}) => ({
   lastSuccess: "2026-09-21T09:30:00+08:00", checkedAt: NOW.toISOString(), ...extra,
 });
 
-const db = vi.hoisted(() => ({ tables: {} as Record<string, Record<string, unknown>[]>, errors: {} as Record<string, string> }));
+const db = vi.hoisted(() => ({
+  tables: {} as Record<string, Record<string, unknown>[]>,
+  errors: {} as Record<string, string>,
+  /** 假的告警設定 RPC：密碼為 PASSWORD 才通過；saved 記錄最後一次儲存的參數。 */
+  alert: { cities: [] as Record<string, unknown>[], slots: [] as Record<string, unknown>[], saved: null as Record<string, unknown> | null },
+}));
+const PASSWORD = "S3cret-Password!";
 vi.mock("../src/lib/supabase", async () => {
   const { fakeClient: make } = await import("./fakes");
-  return { supabase: { from: (name: string) => make(db.tables, db.errors).from(name) } };
+  return {
+    supabase: {
+      from: (name: string) => make(db.tables, db.errors).from(name),
+      rpc: async (fn: string, params: Record<string, unknown>) => {
+        if (params.p_password !== "S3cret-Password!") return { data: null, error: { message: "invalid_password" } };
+        if (fn === "admin_save_alert_settings") {
+          db.alert.saved = params;
+          db.alert.cities = params.p_cities as Record<string, unknown>[];
+          db.alert.slots = params.p_slots as Record<string, unknown>[];
+          return { data: {}, error: null };
+        }
+        return { data: { cities: db.alert.cities, slots: db.alert.slots }, error: null };
+      },
+    },
+  };
 });
 vi.mock("../src/components/VegaChart", () => ({
   VegaChart: ({ spec }: { spec: object }) => <div data-testid="chart">{JSON.stringify(spec)}</div>,
@@ -34,12 +54,21 @@ vi.mock("../src/components/TemperatureMap", () => ({ // jsdom 不能真的畫 Le
 }));
 
 import App from "../src/App";
+import { CITY_ORDER } from "../src/lib/regions";
 
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(NOW);
   db.tables = { weather_forecasts: forecastRows(tw(2026, 9, 20, 6), 4), pipeline_status: STATUS };
   db.errors = {};
+  db.alert = {
+    cities: CITY_ORDER.map((name) => ({
+      location_name: name, enabled: name === "臺中市", rain_enabled: true, rain_threshold: 60,
+      min_temp_enabled: true, min_temp_threshold: "12.0", max_temp_enabled: true, max_temp_threshold: "35.0",
+    })),
+    slots: [{ slot: "08:45", enabled: true }, { slot: "14:45", enabled: false }, { slot: "20:45", enabled: true }],
+    saved: null,
+  };
   window.history.replaceState(null, "", "/");
   api.status = allowed();
   api.dispatch = { ok: true, message: "", status: allowed({ allowed: false, inProgress: true }) };
@@ -255,5 +284,129 @@ describe("立即更新", () => {
     await waitFor(() => expect(updateButton().disabled).toBe(false));
     fireEvent.click(updateButton());
     expect(await screen.findByText("觸發失敗（HTTP 403）")).toBeTruthy();
+  });
+});
+
+describe("告警設定", () => {
+  const openAdmin = async () => {
+    render(<App />);
+    await screen.findAllByRole("tab");
+    fireEvent.click(screen.getByRole("button", { name: "⚙️ 告警設定" }));
+  };
+  const loginWith = async (password: string) => {
+    const dialog = await screen.findByRole("dialog", { name: "🔒 管理者登入" });
+    fireEvent.change(within(dialog).getByLabelText("管理者密碼"), { target: { value: password } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "登入" }));
+  };
+  const settingsDialog = () => screen.findByRole("dialog", { name: "⚙️ 告警設定" });
+  const checkbox = (root: HTMLElement, label: string) => within(root).getByLabelText(label) as HTMLInputElement;
+
+  it("未登入先開登入視窗；密碼錯誤顯示錯誤、輸入框清空", async () => {
+    await openAdmin();
+    await loginWith("wrong-password");
+    const dialog = screen.getByRole("dialog", { name: "🔒 管理者登入" });
+    expect(await within(dialog).findByText("密碼錯誤")).toBeTruthy();
+    expect(checkbox(dialog, "管理者密碼").value).toBe("");
+  });
+
+  it("空白密碼不送出", async () => {
+    await openAdmin();
+    await loginWith("");
+    expect(await screen.findByText("請輸入密碼")).toBeTruthy();
+  });
+
+  it("登入後開設定視窗：時段、22 縣市、依資料庫的值勾選", async () => {
+    await openAdmin();
+    await loginWith(PASSWORD);
+    const dialog = await settingsDialog();
+    expect(screen.queryByRole("dialog", { name: "🔒 管理者登入" })).toBeNull();
+    expect(checkbox(dialog, "08:45").checked).toBe(true);
+    expect(checkbox(dialog, "14:45").checked).toBe(false);
+    expect(within(dialog).getAllByRole("row")).toHaveLength(23); // 標題列 + 22 縣市
+    expect(checkbox(dialog, "臺中市 啟用").checked).toBe(true);
+    expect(checkbox(dialog, "臺北市 低溫門檻 (°C)").value).toBe("12");
+  });
+
+  it("修改後儲存：送出密碼與修改後的值，顯示已儲存", async () => {
+    await openAdmin();
+    await loginWith(PASSWORD);
+    const dialog = await settingsDialog();
+    fireEvent.click(checkbox(dialog, "臺北市 啟用"));
+    fireEvent.change(checkbox(dialog, "臺北市 降雨門檻 (%)"), { target: { value: "70" } });
+    fireEvent.click(checkbox(dialog, "14:45"));
+    fireEvent.click(within(dialog).getByRole("button", { name: "💾 儲存" }));
+    expect(await within(dialog).findByText("已儲存，設定會在下一個發送時段生效")).toBeTruthy();
+    const saved = db.alert.saved as { p_password: string; p_cities: Record<string, unknown>[]; p_slots: unknown[] };
+    expect(saved.p_password).toBe(PASSWORD);
+    expect(saved.p_cities.find((c) => c.location_name === "臺北市")).toMatchObject({ enabled: true, rain_threshold: 70 });
+    expect(saved.p_slots).toContainEqual({ slot: "14:45", enabled: true });
+  });
+
+  it("門檻超出範圍：不送出並顯示原因", async () => {
+    await openAdmin();
+    await loginWith(PASSWORD);
+    const dialog = await settingsDialog();
+    fireEvent.change(checkbox(dialog, "臺北市 降雨門檻 (%)"), { target: { value: "150" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "💾 儲存" }));
+    expect(await within(dialog).findByText(/儲存失敗：臺北市：「降雨門檻 \(%\)」必須介於 0 到 100/)).toBeTruthy();
+    expect(db.alert.saved).toBeNull();
+  });
+
+  it("全部關閉只改畫面（尚未儲存），並提示沒有啟用任何縣市", async () => {
+    await openAdmin();
+    await loginWith(PASSWORD);
+    const dialog = await settingsDialog();
+    fireEvent.click(within(dialog).getByRole("button", { name: "全部關閉（尚未儲存）" }));
+    expect(within(dialog).getByText("尚未啟用任何縣市，不會發送告警")).toBeTruthy();
+    expect(db.alert.saved).toBeNull();
+  });
+
+  it("關閉視窗放棄未儲存的修改；再按按鈕不用重新登入，並從資料庫重讀", async () => {
+    await openAdmin();
+    await loginWith(PASSWORD);
+    let dialog = await settingsDialog();
+    fireEvent.click(checkbox(dialog, "臺北市 啟用"));
+    fireEvent.click(within(dialog).getByRole("button", { name: "關閉" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "⚙️ 告警設定" }));
+    dialog = await settingsDialog();
+    expect(checkbox(dialog, "臺北市 啟用").checked).toBe(false);
+  });
+
+  it("登出後關閉視窗並提示；再按按鈕要重新登入", async () => {
+    await openAdmin();
+    await loginWith(PASSWORD);
+    const dialog = await settingsDialog();
+    fireEvent.click(within(dialog).getByRole("button", { name: "登出" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.getByText("已登出")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "⚙️ 告警設定" }));
+    expect(await screen.findByRole("dialog", { name: "🔒 管理者登入" })).toBeTruthy();
+  });
+
+  it("閒置超過 15 分鐘自動登出", async () => {
+    vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout", "setInterval", "clearInterval"] });
+    vi.setSystemTime(NOW);
+    render(<App />);
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    fireEvent.click(screen.getByRole("button", { name: "⚙️ 告警設定" }));
+    const login = screen.getByRole("dialog", { name: "🔒 管理者登入" });
+    fireEvent.change(checkbox(login, "管理者密碼"), { target: { value: PASSWORD } });
+    fireEvent.click(within(login).getByRole("button", { name: "登入" }));
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    expect(screen.getByRole("dialog", { name: "⚙️ 告警設定" })).toBeTruthy();
+    await act(async () => { await vi.advanceTimersByTimeAsync(16 * 60_000); });
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.getByText("已因閒置超過 15 分鐘登出，請重新登入")).toBeTruthy();
+  });
+
+  it("手機選單：按「☰ 選單」展開，按其中的按鈕後收起", async () => {
+    render(<App />);
+    await screen.findAllByRole("tab");
+    const toggle = screen.getByRole("button", { name: "☰ 選單" });
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    fireEvent.click(screen.getByRole("button", { name: "⚙️ 告警設定" }));
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
   });
 });
