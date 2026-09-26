@@ -6,6 +6,7 @@
 */
 import { formatValue, isNight, weatherIcon } from "./formatting";
 import { rainColor } from "./rain";
+import { rangeColor } from "./tempRange";
 import type { Scope, ScopedRow } from "./scope";
 import { isMissing, tempColor, textColor } from "./temperature";
 
@@ -85,9 +86,9 @@ export function widestRange(cur: ScopedRow[]): { value: number | null; city: str
   return best ?? { value: null, city: "" };
 }
 
-/** 溫差卡片：數字不上色、一般玻璃邊框。 */
+/** 溫差卡片：數字不上色，邊框依溫差色階（lib/tempRange.ts）發光。 */
 function rangeCard(label: string, value: number | null): CardModel {
-  return { label, text: formatValue(value, "°C"), textColor: "", accent: "", aside: "", meter: null };
+  return { label, text: formatValue(value, "°C"), textColor: "", accent: rangeColor(value), aside: "", meter: null };
 }
 
 /** 多縣市摘要：標題列在指標名稱後接縣市名（「最高溫　臺中市」）。 */

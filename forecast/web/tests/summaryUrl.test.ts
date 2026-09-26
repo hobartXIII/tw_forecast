@@ -6,6 +6,7 @@ import { ALL_REGIONS } from "../src/lib/regions";
 import { toForecastRow } from "../src/lib/repository";
 import { Scope, addRegion, withAvg } from "../src/lib/scope";
 import { extreme, summaryCards, tempRange, widestRange } from "../src/lib/summary";
+import { RANGE_BANDS, rangeColor } from "../src/lib/tempRange";
 import { tempColor } from "../src/lib/temperature";
 import { dateLabel } from "../src/lib/time";
 import { scopeFromSearch, searchFromScope } from "../src/lib/urlState";
@@ -27,7 +28,7 @@ describe("summaryCards", () => {
     expect(cards[1].sub).toBe("連江縣 / 臺北市");
     expect(cards[1].accent).toBe(tempColor(high));
     expect(cards[2].text).toBe("6 °C"); // 每個縣市的溫差都是 6，取第一個
-    expect(cards[2].accent).toBe("");
+    expect(cards[2].accent).toBe(RANGE_BANDS[1][1]); // 6 °C：紫
     expect(cards[3].meter).toBe(21);
     expect(cards[3].accent).toBe(rainColor(21));
     expect(cards[3].textColor).toBe(""); // 降雨數字不上色
@@ -58,6 +59,15 @@ describe("summaryCards", () => {
     const rows = cur().map((r, i) => ({ ...r, max_temp: 30, min_temp: i === 3 ? 20 : 25 }));
     expect(widestRange(rows)).toEqual({ value: 10, city: rows[3].location_name });
     expect(widestRange(rows.map((r) => ({ ...r, min_temp: null })))).toEqual({ value: null, city: "" });
+  });
+
+  it("溫差色階：< 6 淡紫、6～9 紫、>= 10 深紫，沒有值不上色", () => {
+    expect([0, 5.9, 6, 9.9, 10, 15].map(rangeColor)).toEqual([
+      RANGE_BANDS[0][1], RANGE_BANDS[0][1], RANGE_BANDS[1][1], RANGE_BANDS[1][1], RANGE_BANDS[2][1], RANGE_BANDS[2][1],
+    ]);
+    expect(rangeColor(null)).toBe("");
+    const rows = cur().map((r) => ({ ...r, min_temp: null }));
+    expect(summaryCards(rows, new Scope())[2].accent).toBe(""); // 算不出溫差時一般玻璃邊框
   });
 
   it("extreme 同值取先出現的一筆", () => {

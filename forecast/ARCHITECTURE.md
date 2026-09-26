@@ -152,6 +152,7 @@ flowchart TD
 | `lib/mapView.ts` | `mapPoints`、`markerHtml`、`tooltipHtml`、`mapViewport` | 地圖的標記、提示框、圖例與視野（被選縣市放大） |
 | `lib/temperature.ts` | `BANDS`、`textColor` | 氣溫級距與顏色，地圖、表格、摘要共用 |
 | `lib/rain.ts` | `RAIN_ALERT`、`rainColor` | 降雨告警門檻（60%）與降雨色階，趨勢圖與摘要卡片共用 |
+| `lib/tempRange.ts` | `RANGE_WIDE`、`rangeColor` | 溫差色階（紫色系：< 6、6～9、≥ 10 °C），溫差卡片的發光邊框 |
 | `lib/regions.ts` | `REGIONS`、`CITY_ORDER`、`regionOf` | 縣市 → 地區（北／中／南／東／離島）對照表 |
 | `lib/formatting.ts` | `weatherIcon`、`isNight`、`formatRange` 等 | 天氣圖示與日夜判斷、時間與數值的顯示文字 |
 | `lib/updateGate.ts` | `evaluate`、`MIN_INTERVAL_MINUTES` | 「立即更新」是否可按：距上次成功滿 20 分鐘，且 GitHub 上沒有未完成的手動 run（瀏覽器與 `api/` 共用） |
