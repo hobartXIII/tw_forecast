@@ -1,4 +1,4 @@
-"""前後端共用的常數（不含任何機密；金鑰一律由環境變數或 Streamlit secrets 提供）。"""
+"""後端使用的常數（不含任何機密；金鑰一律由環境變數提供）。"""
 from datetime import timedelta, timezone
 from pathlib import Path
 

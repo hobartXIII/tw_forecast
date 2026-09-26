@@ -1,8 +1,6 @@
 """測試用的假物件與資料產生器：不連網、不連資料庫，也不依賴被 .gitignore 的 samples/。"""
 from datetime import datetime, timedelta, timezone
 
-from tw_forecast.frontend.regions import CITY_ORDER
-
 TZ = timezone(timedelta(hours=8))
 
 
@@ -117,22 +115,3 @@ def cwa_payload(city="臺北市", start="2026-09-21T06:00:00+08:00", end="2026-0
             element("最高溫度", "MaxTemperature"), element("平均溫度", "Temperature"),
             element("12小時降雨機率", "ProbabilityOfPrecipitation"),
             element("最大舒適度指數", "MaxComfortIndexDescription")]}]}]}}
-
-
-# ---------- 假預報資料庫列（22 縣市 × 多個 12 小時時段） ----------
-def forecast_rows(first_day: datetime, days: int = 4, updated_at: str = "2026-09-21T09:30:00+08:00") -> list[dict]:
-    """每個縣市、每天 06:00~18:00 與 18:00~隔天 06:00 兩個完整時段。溫度隨縣市與時段變化，方便驗證極值。"""
-    rows = []
-    for c, city in enumerate(CITY_ORDER):
-        for d in range(days * 2):
-            start = first_day + timedelta(hours=12 * d)
-            rows.append({
-                "location_name": city,
-                "forecast_time_start": start.isoformat(), "forecast_time_end": (start + timedelta(hours=12)).isoformat(),
-                "latitude": 22.0 + c * 0.15, "longitude": 120.0 + c * 0.08,
-                "weather_condition": ["晴", "多雲", "陰短暫雨"][d % 3],
-                "min_temp": 18.0 + c * 0.5, "max_temp": 24.0 + c * 0.5 + d, "avg_temp": 21.0 + c * 0.5,
-                "rain_probability": None if d > 5 else (d * 10 + c) % 100,
-                "comfort_index": "舒適", "updated_at": updated_at,
-            })
-    return rows

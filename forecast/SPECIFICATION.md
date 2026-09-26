@@ -1,12 +1,12 @@
 # 台灣天氣預報與自動化通報系統 (Taiwan Weather Forecast System)
 # 系統規格書 (System Specification Document)
 
-- **版本**: `v1.8.2`
-- **狀態**: `Implemented: 後端排程與 Streamlit 前端皆已上線運作（見 §10 進度）`
+- **版本**: `v2.0.0`
+- **狀態**: `Implemented: 後端排程與 Vercel 前端皆已上線運作；Streamlit 版保留在 streamlit 分支（見 §10 進度）`
 - **文件路徑**: `forecast/SPECIFICATION.md`
 - **核心流程規範**:
   1. **流程一（後端）**：GitHub Actions 排程執行 Python (`fetch_and_store.py`)，呼叫中央氣象署 API 取資料、後處理並寫入雲端 Supabase；符合條件時推播到個人的 Telegram。
-  2. **流程二（前端）**：Streamlit + Folium 儀表板直接連線 Supabase（`supabase-py` 或 `psycopg2`）讀取資料並視覺化，部署於 Streamlit Community Cloud。
+  2. **流程二（前端）**：Vite + React + TypeScript 儀表板在瀏覽器以 `anon` 金鑰直接查詢 Supabase 並視覺化，部署於 Vercel（「立即更新」由 Vercel Functions 觸發 workflow）。v2.0.0 之前的 Streamlit + Folium 版保留在 `streamlit` 分支，繼續部署於 Streamlit Community Cloud。
 
 ---
 
@@ -18,7 +18,7 @@
 5. [資料庫模型與儲存設計 (Supabase)](#5-資料庫模型與儲存設計-supabase)
 6. [流程一實作規格：Python 打 API 取資料存 DB (`fetch_and_store.py`)](#6-流程一實作規格python-打-api-取資料存-db-fetch_and_storepy)
 7. [GitHub Actions 自動化排程工作流規格](#7-github-actions-自動化排程工作流規格)
-8. [流程二實作規格：Streamlit 讀取 Supabase 視覺化與部署](#8-流程二實作規格streamlit-讀取-supabase-視覺化與部署)
+8. [流程二實作規格：儀表板讀取 Supabase 視覺化與部署（Vercel）](#8-流程二實作規格儀表板讀取-supabase-視覺化與部署vercel)
 9. [專案目錄與檔案結構藍圖](#9-專案目錄與檔案結構藍圖)
 10. [實施里程碑與驗收清單](#10-實施里程碑與驗收清單)
 
@@ -41,19 +41,19 @@
                                  │  (僅透過資料庫溝通)
                                  ▼
 ┌────────────────────────────────────────────────────────────────────────────┐
-│ 🌟 流程二：Streamlit 讀 DB 視覺化 (Serving & Presentation)                 │
-│    執行環境：Streamlit Community Cloud                                     │
+│ 🌟 流程二：儀表板讀 DB 視覺化 (Serving & Presentation)                     │
+│    執行環境：Vercel（靜態頁 + api/ Functions）                             │
 │                                                                            │
-│ [Supabase 雲端 DB] ──(supabase-py 唯讀，anon 金鑰)──> [Streamlit + Folium] │
+│ [Supabase 雲端 DB] ──(supabase-js 唯讀，anon 金鑰)──> [React + Vega + Leaflet]│
 │                                                                            │
-│ * 互動式儀表板：趨勢圖 + 明細表格 + Folium 地圖 + 告警設定 (需管理者密碼)  │
+│ * 互動式儀表板：趨勢圖 + 明細表格 + 地圖 + 告警設定 (需管理者密碼)         │
 └────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### 1.2 系統目標與特色
 1. **讀寫分離 (Read/Write Separation)**：後端（GitHub Actions）是唯一的寫入端；前端只以唯讀權限讀取資料庫，不呼叫氣象署 API，也不持有後端寫入金鑰。
-2. **教學原型探索 (微課程相容)**：相容「煥哥 AI 創新微課程」之 Python、Pandas、Streamlit、Folium 台灣互動地圖實作；資料存取由課程原版的本機 `sqlite3` 改為雲端 Supabase（PostgreSQL）。
-3. **雲端自動維運 (Serverless & Free-tier)**：GitHub Actions 依固定排程（或手動觸發）自動執行流程一寫入 Supabase；前端部署於 Streamlit Community Cloud，皆使用免費方案。
+2. **教學原型探索 (微課程相容)**：延伸「煥哥 AI 創新微課程」之 Python、Pandas、Streamlit、Folium 台灣互動地圖實作；資料存取由課程原版的本機 `sqlite3` 改為雲端 Supabase（PostgreSQL）。前端先以 Streamlit 完成（`streamlit` 分支），v2.0.0 再改寫為 Vite + React 部署到 Vercel（決定與過程見 `VERCEL_PLAN.md`）。
+3. **雲端自動維運 (Serverless & Free-tier)**：GitHub Actions 依固定排程（或手動觸發）自動執行流程一寫入 Supabase；前端部署於 Vercel（Hobby），皆使用免費方案。
 
 ---
 
@@ -92,12 +92,12 @@ anon 讀不到也寫不了")]
 admin_get / save_alert_settings"]
     end
 
-    subgraph Stage2["【流程二：Streamlit 讀 DB 視覺化】"]
+    subgraph Stage2["【流程二：儀表板讀 DB 視覺化 (Vercel)】"]
         direction TB
         Dashboard["📊 儀表板
 摘要、地圖、趨勢圖、明細、日期查詢"]
-        RefreshBtn["🔄 立即更新
-間隔 20 分鐘 + 觸發後鎖定"]
+        RefreshBtn["🔄 立即更新 (api/ Functions)
+間隔 20 分鐘 + GitHub 上有未完成的手動 run 時鎖定"]
         AdminPanel["⚙️ 告警設定視窗
 管理者密碼"]
     end
@@ -117,7 +117,7 @@ admin_get / save_alert_settings"]
 #### 🖼️ 系統總體架構圖視覺呈現 (Architecture Visual Diagram)
 ![系統總體架構圖 (向量繁中版)](architecture_diagram.svg)
 
-> 💡 上圖為 Mermaid 版本；同內容的向量圖檔為 `architecture_diagram.svg`，兩者皆已依目前架構重繪（v1.12.5）。
+> 💡 上圖為 Mermaid 版本（v2.0.0 已更新為 Vercel 前端）；向量圖檔 `architecture_diagram.svg` 是 v1.12.5 依 Streamlit 版繪製，前端部分以 Mermaid 版為準。
 
 ---
 
@@ -127,7 +127,8 @@ admin_get / save_alert_settings"]
 sequenceDiagram
     autonumber
     participant U as 使用者
-    participant FE as 儀表板 (Streamlit)
+    participant FE as 儀表板 (瀏覽器)
+    participant FN as api/ Functions (Vercel)
     participant DB as Supabase
     participant BE as 後端 Pipeline (GitHub Actions)
     participant CWA as 中央氣象署 API
@@ -155,8 +156,10 @@ sequenceDiagram
     FE-->>U: 摘要、地圖、圖表與表格 📊
     opt 使用者按下「立即更新」
         U->>FE: 按下按鈕
-        FE->>FE: update_gate：滿 20 分鐘且未鎖定
-        FE->>BE: POST workflow_dispatch (GH_DISPATCH_TOKEN)
+        FE->>FN: POST /api/dispatch
+        FN->>DB: 讀 pipeline_status（滿 20 分鐘？）
+        FN->>FN: 查 GitHub 有無未完成的手動 run
+        FN->>BE: POST workflow_dispatch (GH_DISPATCH_TOKEN 只在 Function)
     end
     opt 管理者調整告警設定
         U->>FE: 輸入管理者密碼
@@ -168,7 +171,7 @@ sequenceDiagram
 #### 🖼️ 核心資料流程時序圖視覺呈現 (Sequence Visual Diagram)
 ![核心資料流程時序圖 (向量繁中版)](sequence_diagram.svg)
 
-> 💡 同內容的 Mermaid 版本見上方；圖檔已依目前架構重繪（v1.12.5）。
+> 💡 Mermaid 版本見上方（v2.0.0 已更新為 Vercel 前端）；圖檔是 v1.12.5 依 Streamlit 版繪製，「立即更新」的路徑以 Mermaid 版為準。
 
 ---
 
@@ -230,7 +233,7 @@ records.Locations[]                     ← 1 筆 (LocationsName "台灣"，Data
 
 ### 3.4 時區處理規範
 - 實測 `StartTime` / `EndTime` **已帶 `+08:00`**（如 `2026-09-20T00:00:00+08:00`），可直接以 ISO 8601 字串寫入 `TIMESTAMPTZ`，不需再補時區；仍應在程式中檢查字串含時區偏移，若日後 API 改為不含時區才補上 `+08:00`（`tz_localize("Asia/Taipei")`），否則 PostgreSQL 會當成 UTC，時間差 8 小時。
-- 前端 Streamlit 判斷「目前時段」與顯示時間時，一律以 `Asia/Taipei` 時區轉換；程式內**不可**使用無時區的 `datetime.now()`（GitHub Actions runner 與 Streamlit Cloud 主機皆為 UTC）。
+- 前端判斷「目前時段」與顯示時間時，一律以 `Asia/Taipei` 時區轉換；程式內**不可**使用無時區的 `datetime.now()`（GitHub Actions runner、Vercel 主機與使用者的瀏覽器皆可能為 UTC）。
 - 排程 `cron` 以 UTC 計算：`45 */3 * * *` 對應台灣時間 **02:45、05:45、08:45、11:45、14:45、17:45、20:45、23:45**（每 3 小時，一天 8 次；避開整點以減少 GitHub 排程延遲）。
 
 ### 3.5 API 使用限制與用量評估（一般會員）
@@ -246,7 +249,7 @@ records.Locations[]                     ← 1 筆 (LocationsName "台灣"，Data
 - 每次流程一只呼叫 **1 次** `F-D0047-091`（一次回傳全臺各縣市一週預報，不逐縣市分次呼叫）。
 - 固定排程每天 8 次；加上「立即更新」（每次觸發 1 次 API，且受 §8.1 的 20 分鐘間隔限制，一天最多約 72 次），一天遠低於 2 萬次。
 - 實測單次回應約 **669 KB**，每天排程 8 次約 5.4 MB，遠低於每日 2 GB 上限。
-- **前端 Streamlit 不呼叫 CWA API**，只讀 Supabase，因此使用者人數增加不會增加 CWA 用量。
+- **前端不呼叫 CWA API**，只讀 Supabase，因此使用者人數增加不會增加 CWA 用量。
 
 **使用規範（實作須遵守）**：
 1. **每次執行只打一次 API**：不得在迴圈中對每個縣市各發一次請求；如需限縮內容，用 `LocationName` / `ElementName` 參數，而不是拆成多次請求。
@@ -270,23 +273,25 @@ records.Locations[]                     ← 1 筆 (LocationsName "台灣"，Data
 | `TELEGRAM_BOT_TOKEN` | String | Telegram 機器人 token（向 @BotFather 建立取得）；**等同機器人的密碼，不可進資料庫、前端或 repo** | GitHub Secrets / 本地 `.env` |
 | `TELEGRAM_CHAT_ID` | String | 接收告警的對話 ID（個人私訊；用 `tools/get_telegram_chat_id.py` 查詢） | GitHub Secrets / 本地 `.env` |
 
-### 4.2 前端 Streamlit 設定（Streamlit Community Cloud Secrets / 本地 `.streamlit/secrets.toml`）
+### 4.2 前端設定（Vercel 環境變數 / 本地 `forecast/web/.env.local`）
 
-| 變數名稱 | 說明 |
-| :--- | :--- |
-| `SUPABASE_URL` | Supabase 專案端點 URL（使用 `supabase-py` 時） |
-| `SUPABASE_ANON_KEY` | Supabase `anon` 公開金鑰，僅能依 RLS 政策**唯讀** `weather_forecasts`（使用 `supabase-py` 時） |
-| `SUPABASE_DB_URL` | 唯讀資料庫帳號的 PostgreSQL 連線字串（改用 `psycopg2` 時；須使用 Supabase **Pooler** 連線字串，見 §8.2） |
-| `GH_DISPATCH_TOKEN` | GitHub Fine-grained PAT，僅授權此 repo 的 `Actions: Read and write`（「立即更新」按鈕用） |
-| `GH_REPO` | 格式 `owner/repo` |
+| 變數名稱 | 位置 | 說明 |
+| :--- | :--- | :--- |
+| `VITE_SUPABASE_URL` | 瀏覽器（建置時打包） | Supabase 專案端點 URL |
+| `VITE_SUPABASE_ANON_KEY` | 瀏覽器（建置時打包） | Supabase `anon` 公開金鑰，僅能依 RLS 政策**唯讀** `weather_forecasts`、`pipeline_status`，並呼叫告警設定的資料庫函式 |
+| `SUPABASE_URL`、`SUPABASE_ANON_KEY` | 只在 Function（選填） | `api/` 讀 `pipeline_status` 用；沒設定時沿用上面兩個 `VITE_` 變數（同一組 anon 值） |
+| `GH_REPO` | 只在 Function | 格式 `owner/repo` |
+| `GH_DISPATCH_TOKEN` | 只在 Function | GitHub Fine-grained PAT，僅授權此 repo 的 `Actions: Read and write`（查詢 workflow runs 與觸發 `workflow_dispatch`）；**不可**加 `VITE_` 前綴，否則會被打包進瀏覽器 |
 
-> ⚠️ 前端 Secrets **嚴禁**放入 `service_role` key 或任何可寫入資料庫的憑證；所有 Secrets 皆不得 commit 進 repo。
+> ⚠️ 前端**嚴禁**放入 `service_role` key 或任何可寫入資料庫的憑證；所有變數皆不得 commit 進 repo。
+> ⚠️ Vercel 的環境變數類型一律選 **Config**：選 Secret 的變數在 Function 執行時讀不到（2026-09-26 實測）。改了變數要 Redeploy 才生效（`VITE_` 變數是建置時打包進去的）。
 
 ### 4.3 本地安全防護規範
 - 專案根目錄必須配置 `.gitignore`，嚴禁 Commit 以下檔案：
   ```text
   .env
-  .streamlit/secrets.toml
+  .env.local            # forecast/web/.env.local（前端）
+  node_modules/
   __pycache__/
   .venv/
   ```
@@ -299,19 +304,19 @@ records.Locations[]                     ← 1 筆 (LocationsName "台灣"，Data
   TELEGRAM_BOT_TOKEN="123456789:AAxxxxxxxx"
   TELEGRAM_CHAT_ID="123456789"
   ```
-- 提供範本檔 `.streamlit/secrets.toml.example`（前端）：
-  ```toml
-  SUPABASE_URL = "https://your-project.supabase.co"
-  SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsIn..."   # anon，非 service_role
-  GH_DISPATCH_TOKEN = "github_pat_..."
-  GH_REPO = "owner/repo"
+- 提供範本檔 `forecast/web/.env.example`（前端，複製成 `.env.local` 後填入）：
+  ```bash
+  VITE_SUPABASE_URL=https://xxxx.supabase.co
+  VITE_SUPABASE_ANON_KEY=                # anon，非 service_role
+  GH_REPO=hobartXIII/tw_forecast         # 只給 api/ 用，不可加 VITE_ 前綴
+  GH_DISPATCH_TOKEN=
   ```
 
 ---
 
 ## 5. 資料庫模型與儲存設計 (Supabase)
 
-系統統一採用雲端 Supabase (PostgreSQL) 作為唯一資料庫（免費方案即可：註冊 Supabase 並建立免費專案）。後端（GitHub Actions / 本地測試）與前端（Streamlit）皆連線同一雲端資料庫，不使用本機 SQLite。
+系統統一採用雲端 Supabase (PostgreSQL) 作為唯一資料庫（免費方案即可：註冊 Supabase 並建立免費專案）。後端（GitHub Actions / 本地測試）與前端（瀏覽器、Vercel Functions）皆連線同一雲端資料庫，不使用本機 SQLite。
 
 ### 5.1 資料庫：Supabase (PostgreSQL)
 
@@ -374,9 +379,9 @@ CREATE POLICY "Allow anon read only" ON public.weather_forecasts
 
 **RLS 設計說明**：
 - **寫入端**：僅 GitHub Actions 的流程一使用 **`service_role` key** 寫入（會繞過 RLS）。
-- **讀取端**：Streamlit 前端使用 `anon` key，只能透過上述 `SELECT` policy 讀取；因沒有寫入 policy，即使 `anon` key 外洩也無法新增、修改或刪除資料。
+- **讀取端**：前端使用 `anon` key，只能透過上述 `SELECT` policy 讀取；因沒有寫入 policy，即使 `anon` key 外洩也無法新增、修改或刪除資料。
 - `weather_forecasts` 只含公開氣象預報與告警旗標，開放匿名唯讀可接受；若日後加入敏感欄位，須改為僅授權特定角色或使用唯讀資料庫帳號（`psycopg2` 方案）。
-- ⚠️ `service_role` key 權限等同管理員，只能存放於 GitHub Secrets / 本地 `.env`，**嚴禁**放入 Streamlit secrets 或 commit 進 repo。
+- ⚠️ `service_role` key 權限等同管理員，只能存放於 GitHub Secrets / 本地 `.env`，**嚴禁**放入前端（Vercel 環境變數、`VITE_` 變數）或 commit 進 repo。
 
 #### 資料表：`pipeline_status` (流程一執行狀態)
 
@@ -508,7 +513,7 @@ REVOKE ALL ON public.alert_slot_settings FROM anon, authenticated;
 
 **觸發方式**：
 - **固定排程**：由 workflow 內的 `cron` 決定（台灣時間 02:45 起每 3 小時），排程時間僅能透過修改 `.yml` 並 commit 變更，前端不提供調整功能。排程不受任何手動更新限制。
-- **手動立即更新**：前端 Streamlit 按鈕先以資料庫 `pipeline_status` 判斷距上次成功更新已滿 20 分鐘，才透過 GitHub API 觸發 `workflow_dispatch`（見 §8.1）。手動更新只更新資料，不推播告警。在 GitHub Actions 頁面直接手動執行不經過儀表板的檢查，可作為管理者的強制更新。
+- **手動立即更新**：前端按鈕呼叫 Vercel Function，由伺服器端以資料庫 `pipeline_status` 判斷距上次成功更新已滿 20 分鐘、且 GitHub 上沒有未完成的手動 run，才透過 GitHub API 觸發 `workflow_dispatch`（見 §8.1 第 7 點）。手動更新只更新資料，不推播告警。在 GitHub Actions 頁面直接手動執行不經過儀表板的檢查，可作為管理者的強制更新。
 
 ```yaml
 name: Taiwan Weather Pipeline (Fetch -> Store)
@@ -569,44 +574,48 @@ jobs:
 
 ---
 
-## 8. 流程二實作規格：Streamlit 讀取 Supabase 視覺化與部署
+## 8. 流程二實作規格：儀表板讀取 Supabase 視覺化與部署（Vercel）
 
-前端只保留 **Streamlit + Folium**，直接連線 Supabase 唯讀查詢，取代課程原版的本機 `sqlite3`。
+前端為 **Vite + React + TypeScript** 的靜態頁（`forecast/web/`），在瀏覽器以 `@supabase/supabase-js` 與 `anon` 金鑰直接查詢 Supabase，取代課程原版的本機 `sqlite3`；圖表用 Vega-Lite（`vega-embed`），地圖用 Leaflet。只有「立即更新」需要伺服器端，由 `forecast/web/api/` 的兩支 Vercel Functions 處理。每個檔案的功能見 `ARCHITECTURE.md` §4。
 
-### 8.1 Streamlit 互動儀表板 (`streamlit_app/app.py`)
-1. **讀取資料庫（不快取）**：每次頁面載入/重新整理都重新查詢 Supabase，**不使用** `st.cache_data` / `st.cache_resource` 快取查詢結果（`st.cache_resource` 只用於重用連線物件與「最近一次觸發更新」的共用記錄）；畫面顯示目前顯示的預報時段起訖時間，以及該批資料的「資料更新時間」（取所顯示列的 `updated_at` 最大值），皆以 `Asia/Taipei` 顯示。
+> v2.0.0 之前的 Streamlit 版（`streamlit_app/app.py`、`src/tw_forecast/frontend/`）保留在 `streamlit` 分支，該分支的規格書 §8 記錄 Streamlit 版的實作細節；行為規則兩版相同，差異見下方各點的「Streamlit 版」說明。
+
+### 8.1 互動儀表板（`web/src/App.tsx`）
+1. **讀取資料庫（不快取）**：每次頁面載入與按「♻️ 重新載入資料」都重新查詢 Supabase，不快取查詢結果；篩選只在瀏覽器端重新整理已載入的資料，不重新查詢。畫面顯示目前顯示的預報時段起訖時間，以及該批資料的「資料更新時間」（取所顯示列的 `updated_at` 最大值），皆以台灣時間顯示（固定 UTC+8，集中在 `lib/time.ts`，不依賴瀏覽器或 Vercel 的時區）。
    - **只取最新批次**：CWA 第一個時段會隨時間縮短（如 `06:00~18:00` → `12:00~18:00`），而主鍵含 `forecast_time_end`，舊列會留在表中並與新列時段重疊。每次流程一都以同一個 `updated_at` 寫入整批，因此前端查詢後只保留 `updated_at` 等於最大值的列，避免同一縣市出現重疊時段；舊列保留作為歷史存檔。
-2. **「目前時段」定義**：查詢 `forecast_time_start <= 現在(Asia/Taipei) < forecast_time_end` 的各縣市資料；若無符合資料，取最接近現在的最新時段。
-   - **重點摘要**：篩選之後、地圖之前顯示 4 個指標。多縣市時為平均氣溫、最高溫、最低溫、最高降雨機率，其中最高溫、最低溫、最高降雨機率的標題列在指標名稱後接縣市名（如「最高溫　臺中市」），數值放在下一行；選定單一縣市時改為該縣市的平均氣溫、最高溫、最低溫、降雨機率，天氣現象（圖示與文字）顯示在平均氣溫數值（°C）的右側。欄位為 NULL 時顯示「—」。卡片邊框依級距色發光（邊框混入淡淡的級距色，外圍加一圈同色柔光，深色主題光暈較濃）：溫度卡片依氣溫級距（與地圖標記同色），降雨機率卡片依降雨色階（`frontend/rain.py`：< 30% 淡天藍、30～59% 雨藍、≥ 60% 靛藍，60% 與告警門檻一致），降雨機率卡片另在數值下方加一條同色進度條；數值為 NULL 時為一般玻璃邊框、不發光，也不畫進度條。
-   - 若沒有涵蓋此刻的時段（資料過期），以警示提醒「顯示的是最接近的時段」。
-3. **地區／縣市互斥下拉選單**（兩個下拉，整頁內容都跟著選擇更新）：
-   - 「地區」：`全部地區`、`北部地區`、`中部地區`、`南部地區`、`東部地區`、`離島地區`（澎湖、金門、連江不屬於四大分區，另列離島）；縣市對應分區由前端靜態對照表 (`src/tw_forecast/frontend/regions.py`) 提供。
-   - 「縣市」：`全部縣市` 加上固定的 22 個縣市（依地區順序排列）。不能打字搜尋（`filter_mode=None`）：Streamlit 在手機上只有選項 ≤ 10 個時才把輸入框設成唯讀，縣市有 23 個選項，可打字時點下去會跳出鍵盤遮住半個畫面；關掉打字後只能捲動清單點選（電腦上也一樣）。地區只有 6 個選項，手機上本來就不跳鍵盤，維持預設。
-   - **兩者互斥**：選「地區」時，縣市自動回到「全部縣市」；選「縣市」時，地區選單改顯示空白提示「— 已選縣市 —」（值為空，不是「全部地區」）。這是刻意的：下拉選單只有在值改變時才會觸發切換，若仍顯示「全部地區」，使用者再點「全部地區」就不會有反應、縣市也清不掉。因此選「全部地區」會清掉縣市回到全台檢視；選回「全部縣市」則地區回到「全部地區」。以下拉的 `on_change` 回呼實作（程式改另一個下拉的值不會再觸發回呼）。
+   - 未設定 `VITE_SUPABASE_URL`／`VITE_SUPABASE_ANON_KEY` 時顯示「尚未設定」；讀不到 `pipeline_status` 只是不顯示更新時間，不影響其他區塊。
+2. **「目前時段」定義**：查詢 `forecast_time_start <= 現在 < forecast_time_end` 的各縣市資料；若無符合資料，取最接近現在的最新時段。
+   - **重點摘要**：篩選之後、地圖之前顯示 4 張卡片。多縣市時為平均氣溫、最高溫、最低溫、最高降雨機率，其中最高溫、最低溫、最高降雨機率的標題列在指標名稱後接縣市名（如「最高溫　臺中市」），數值放在下一行；選定單一縣市時改為該縣市的平均氣溫、最高溫、最低溫、降雨機率，天氣現象（圖示與文字）顯示在平均氣溫數值（°C）的右側。欄位為 NULL 時顯示「—」。卡片邊框依級距色發光（邊框混入淡淡的級距色，外圍加一圈同色柔光，深色主題光暈較濃）：溫度卡片依氣溫級距（與地圖標記同色），降雨機率卡片依降雨色階（`lib/rain.ts`：< 30% 淡天藍、30～59% 雨藍、≥ 60% 靛藍，60% 與告警門檻一致），降雨機率卡片另在數值下方加一條同色進度條；數值為 NULL 時為一般玻璃邊框、不發光，也不畫進度條。
+   - 若沒有涵蓋此刻的時段（資料過期），以警示提醒「顯示的是最接近的時段…可按『立即更新』」。
+3. **地區／縣市互斥下拉選單**（兩個原生 `<select>`，整頁內容都跟著選擇更新）：
+   - 「地區」：`全部地區`、`北部地區`、`中部地區`、`南部地區`、`東部地區`、`離島地區`（澎湖、金門、連江不屬於四大分區，另列離島）；縣市對應分區由前端靜態對照表（`lib/regions.ts`）提供。
+   - 「縣市」：`全部縣市` 加上固定的 22 個縣市（依地區順序排列）。原生下拉在手機上是系統的選單，不會跳出鍵盤（Streamlit 版需關閉打字搜尋才能避免）。
+   - **兩者互斥**：選「地區」時，縣市自動回到「全部縣市」；選「縣市」時，地區選單改顯示空白提示「— 已選縣市 —」（值為空，不是「全部地區」）。這是刻意的：下拉選單只有在值改變時才會觸發切換，若仍顯示「全部地區」，使用者再點「全部地區」就不會有反應、縣市也清不掉。因此選「全部地區」會清掉縣市回到全台檢視；選回「全部縣市」則地區回到「全部地區」。
+   - **選擇保存在網址參數**（`?region=中部地區` 或 `?city=臺中市`，`lib/urlState.ts`）：重新整理或分享網址後保留選擇。
    - 依選擇決定顯示層級：**全台**（地區＝全部地區、縣市＝全部縣市）→ **地區**（選定地區、縣市＝全部縣市）→ **單一縣市**。單一縣市時，地圖與對照範圍使用**該縣市所屬的地區**。
    - 經緯度與 `avg_temp` 直接取自資料庫（`avg_temp` 若為 NULL，退回 `(min_temp + max_temp) / 2`）。
-4. **趨勢圖（未來一週，以分頁呈現）**：不再另設「趨勢圖範圍」選單，範圍由上面兩個下拉決定；圖上以虛線標示「現在」。
+4. **趨勢圖（未來一週，以分頁呈現）**：不再另設「趨勢圖範圍」選單，範圍由上面兩個下拉決定；圖上以虛線標示「現在」。只渲染目前的分頁，其他分頁的圖表與查詢不會在背景執行。
    - 「氣溫趨勢」與「降雨機率」兩個分頁，與明細表格同屬一組分頁（全台／地區層級另有「後續時段」分頁，見第 5 點）。
    - **全台層級**：每個地區的平均為一條線（5 條），各一種顏色。
    - **地區層級**：該地區每個縣市一條線（≤ 6 條），各一種顏色（色盲友善的 Okabe-Ito 色盤）。
    - **單一縣市層級**：降雨機率與全台／地區層級用同一種折線圖（一條線）；**氣溫則把最高溫、平均溫、最低溫三條線畫在同一張圖**（暖色橘紅＝最高、綠＝平均、冷色藍＝最低，可點圖例強調單一線條），不再顯示指標單選鈕。最低溫與最高溫之間鋪一條半透明溫度帶（下緣藍、上緣橙的漸層，滑鼠移上去顯示該時段溫差），兩者任一為 NULL 的時段不畫。
    - **氣溫指標切換**（僅全台／地區層級）：最高溫、最低溫、平均溫三選一（預設最高溫），避免每個縣市兩條線再乘上三個指標造成畫面過於擁擠。
-   - **折線為柔和的曲線**（Vega-Lite `monotone` 插值：平滑且不會超出資料點的範圍，溫度不會出現實際不存在的高低點）；圖高 440px；背景透明（透出頁面漸層光暈）、格線為淡虛線、不畫座標軸線與圖框。
+   - **折線為柔和的曲線**（Vega-Lite `monotone` 插值：平滑且不會超出資料點的範圍，溫度不會出現實際不存在的高低點）；圖高 440px；背景透明（透出頁面漸層光暈）、格線為淡虛線、不畫座標軸線與圖框。圖表文字與格線顏色依淺色／深色切換（Vega 讀不到頁面的 CSS 變數，由 `lib/charts.ts` 的 `LIGHT_CHART`／`DARK_CHART` 傳入）。
    - **氣溫圖 Y 軸從 0 開始**（各層級一致）；降雨機率 Y 軸固定 0～100。
    - **降雨機率**（全台／地區／單一縣市）：折線加點，畫出 60% 紅色虛線門檻（與告警門檻一致），超過者的點放大並加紅框；Y 軸固定 0～100。
-   - **氣象署未提供的時段（NULL）在圖上補 0**：折線連續延伸到整個一週；補值的點畫成**空心點**（白底、系列色外框），滑鼠移上去提示「0（氣象署未提供，以 0 顯示）」，避免被誤讀成預報 0%。先算完地區平均再補 0。折線本身維持實線（Vega 折線無法只讓補值段變虛線）。
+   - **氣象署未提供的時段（NULL）在圖上補 0**：折線連續延伸到整個一週；補值的點畫成**空心點**（底色、系列色外框），滑鼠移上去提示「0（氣象署未提供，以 0 顯示）」，避免被誤讀成預報 0%。先算完地區平均再補 0。折線本身維持實線（Vega 折線無法只讓補值段變虛線）。
    - 補 0 **只用於降雨機率圖**；明細表格與重點摘要仍顯示「—」，不補 0。頁面另附說明「空心點：氣象署未提供…並非預報 0%」。
-   - **圖例互動**：點圖例可強調單一系列、淡化其他系列（在圖內完成，不重新載入頁面）。
-   - **提示框在捲動時收起**：手機沒有「滑鼠移開」，點資料點跳出的提示框原本會一直停留；頁面任何捲動或手指滑動時會把提示框收起，再點資料點仍照常出現（`style.py` 的 `TOOLTIP_JS`，以 `st.html(..., unsafe_allow_javascript=True)` 注入；電腦上用滾輪捲動時也會收起，滑鼠一動即再出現）。
+   - **圖例互動**：點圖例可強調單一系列、淡化其他系列（在圖內完成，不重新載入頁面）。**手機（≤ 640px）上圖例每列最多 3 項**，避免一列放不下時最後一項（如「離島地區」）被切掉。
+   - **提示框在捲動時收起**：手機沒有「滑鼠移開」，點資料點跳出的提示框原本會一直停留；頁面任何捲動或手指滑動時會把提示框收起，再點資料點仍照常出現（`lib/tooltipAutoHide.ts`，以 capture 監聽 `scroll`／`touchmove`；依賴 vega-tooltip 的 `#vg-tooltip-element` 與 `visible` class，若改名只會退回「提示框停留」的舊行為）。
    - 氣象署時段為白天（06–18）與夜間（18–06）交替，最高溫折線會呈現日夜起伏，屬資料本身特性。
    - 若資料已過期（沒有尚未結束的時段），顯示提示並引導使用者按「立即更新」，不得拋出例外。
    - 趨勢查詢須限制範圍（例如近 N 天 + `order` + `limit`），避免超過 Supabase 預設單次 1000 筆上限。
-5. **明細資料表格**：
+5. **明細資料表格**（自己畫的 `<table>`，`components/ForecastTable.tsx`）：
    - 全台／地區層級：呈現目前時段各縣市的時段、地區、天氣現象、氣溫、降雨機率、舒適度（對應海報步驟 15）。
-   - 單一縣市層級：分頁改名為「一週預報」，列出該縣市所有尚未結束的時段（約一週、每個時段約 12 小時），與趨勢圖對照；分頁上方說明為「{縣市}｜未來一週的預報（每個時段約 12 小時）」。該層級沒有「後續時段」分頁。
-   - **「後續時段」分頁**（僅全台／地區層級，位於「目前時段明細」右邊）：列出每個縣市「目前時段」之後的 **2 個時段**（不含目前時段），依**縣市（地區順序：北→中→南→東→離島）→ 時間**排序，時段含日期；分頁上方說明為「每個縣市「目前時段」之後的 2 個時段（依縣市、時間排序）」，表格不另設「階段」欄。資料過期時以畫面顯示的「最接近時段」為基準。
-   - 「天氣現象」前加對應 emoji，降雨機率以進度條呈現，選定地區時隱藏「地區」欄；NULL 顯示「—」或留白。
-   - **溫度數字依級距上色**：重點摘要（平均、最高、最低溫）、明細表格的「最低／最高／平均 (°C)」欄、地圖提示的平均／最高／最低溫，文字色沿用地圖色階（見第 6 點）；NULL 不上色。摘要以自訂 HTML 呈現（`st.metric` 的數值無法指定顏色），表格用 pandas Styler。
+   - 單一縣市層級：分頁改名為「一週預報」，列出該縣市所有尚未結束的時段（約一週、每個時段約 12 小時），與趨勢圖對照。該層級沒有「後續時段」分頁。
+   - **「後續時段」分頁**（僅全台／地區層級，位於「目前時段明細」右邊）：列出每個縣市「目前時段」之後的 **2 個時段**（不含目前時段），依**縣市（地區順序：北→中→南→東→離島）→ 時間**排序，時段含日期；表格不另設「階段」欄。資料過期時以畫面顯示的「最接近時段」為基準。
+   - 「天氣現象」前加對應 emoji，降雨機率以進度條呈現，選定地區時隱藏「地區」欄；NULL 顯示「—」或留白。**點欄位標題可排序**（再點一次反向，沒有值的排最後）。
+   - **溫度數字依級距上色**：重點摘要（平均、最高、最低溫）、明細表格的「最低／最高／平均 (°C)」欄、地圖提示的平均／最高／最低溫，文字色沿用地圖色階（見第 6 點）；NULL 不上色。
    - **天氣圖示區分日夜**（各表格、地圖提示、單一縣市摘要皆依該列自己的時段判斷）：以時段**中點**判斷，中點在 06:00～18:00 為日間，其餘為夜間（氣象署時段以 06、18 時為日夜分界，第一個時段被截短時中點判斷仍正確）。有太陽的圖示夜間不出現：
 
      | 天氣現象 | 日間 | 夜間 |
@@ -616,48 +625,45 @@ jobs:
      | 多雲、多雲時晴 | ⛅ | ☁️ |
      | 陰、陰時多雲、多雲時陰 | ☁️ | ☁️ |
      | 雨、雷、雪、霧 | 🌧️ ⛈️ ❄️ 🌫️（日夜相同） | 同左 |
-6. **台灣地圖視覺化 (Folium + Streamlit)**：
-   - 使用 `folium` + `streamlit-folium`，依縣市座標與 `avg_temp` 繪製標記；標記內直接顯示平均氣溫（整數）；滑鼠移上去顯示提示（位置維持在標記右側），依序為：縣市名、天氣現象、平均氣溫、**最高溫與最低溫（獨立一行，整數）**、降雨機率；值為 NULL 顯示「—」。
-   - **互動**：使用 Leaflet.GestureHandling 外掛（從 CDN 載入，須登記在地圖的 `default_js`／`default_css`，`st_folium` 才會載入）：**手機單指滑動是捲動頁面、雙指才移動或縮放地圖**（並顯示「請用兩指移動地圖」），**電腦滾輪需按住 Ctrl（Mac 為 ⌘）才縮放**，避免捲動頁面時誤觸；左上角 ＋／－ 按鈕仍可縮放；選擇單一地區時，視野自動聚焦到該地區的縣市。
+6. **台灣地圖視覺化（Leaflet）**：
+   - 依縣市座標與 `avg_temp` 繪製標記（`lib/mapView.ts`、`components/TemperatureMap.tsx`）；標記內直接顯示平均氣溫（整數）；滑鼠移上去顯示提示（位置維持在標記右側），依序為：縣市名、天氣現象、平均氣溫、**最高溫與最低溫（獨立一行，整數）**、降雨機率；值為 NULL 顯示「—」。Leaflet 與手勢外掛在第一次顯示地圖時才載入。
+   - **互動**：使用 `leaflet-gesture-handling` 外掛（npm 套件）：**手機單指滑動是捲動頁面、雙指才移動或縮放地圖**（並顯示「請用兩指移動地圖」），**電腦滾輪需按住 Ctrl（Mac 為 ⌘）才縮放**，提示停留約 1 秒（`duration` 須明確設定，因為自訂文字的選項會整個取代外掛預設值）；左上角 ＋／－ 按鈕仍可縮放；選擇單一地區時，視野自動聚焦到該地區的縣市。
    - **單一縣市**：保留該縣市所屬地區的其他縣市作為對照（淡化），被選的縣市放大、加外框並置中（縮放層級 9）。
    - 色階分級標記：
      - `< 20°C`: 藍綠色
      - `20 ~ 25°C`: 綠色
      - `25 ~ 30°C`: 橙黃色（含 30）
      - `> 30°C`: 鮮紅色
-   - 底圖使用 OpenStreetMap（CartoDB 底圖需要 API key）。底圖不論主題都是淺色，圖例與滑鼠提示框固定用淺色玻璃（半透明白＋模糊）。
+   - 底圖使用 OpenStreetMap 官方圖磚，保留「© OpenStreetMap contributors」標示；流量變大時應改用正式的圖磚服務。底圖不論主題都是淺色，圖例與滑鼠提示框固定用淺色玻璃（半透明白＋模糊）。
    - 文字上的溫度級距色與標記填色分開：標記底色用上面較亮的色階；文字色改用中等明度（`#0b8ba0`／`#2b8a3e`／`#cc6a00`／`#e03131`），在淺色與深色底上對比都約 3:1 以上（橙黃 `#f59f00` 在暖白上僅 2.0:1，不適合當文字色）。
-7. **「立即更新」按鈕**：
-   - **判斷依據**：**一律**以資料庫 `pipeline_status` 表（§5.1）的最後成功更新時間為準（排程與手動兩列取較新者），與使用者人數、瀏覽器狀態無關。距上次成功更新**不滿 20 分鐘**不可手動更新，按鈕停用並顯示「距上次更新僅 X 分鐘…請約 Y 分鐘後再試」；排程不受此限制。
-   - **流程**：每次頁面執行（含按下按鈕的那一次）開頭都重新讀取 `pipeline_status`，通過才呼叫 GitHub 觸發更新；判斷在 Streamlit 伺服器端執行，`GH_DISPATCH_TOKEN` 不會到瀏覽器。
-   - **讀不到就不放行**：`pipeline_status` 讀取失敗或沒有任何列時，一律不放行並顯示「無法確認最後更新時間，暫不開放手動更新」。若有列但從未成功更新過（欄位皆空），視為可更新。
+7. **「立即更新」按鈕**（只在 Vercel 版提供；Streamlit 版自 v1.16.0 起以開關關閉）：
+   - **判斷依據**：以資料庫 `pipeline_status` 表（§5.1）的最後成功更新時間為準（排程與手動兩列取較新者），與使用者人數、瀏覽器狀態無關。距上次成功更新**不滿 20 分鐘**不可手動更新；排程不受此限制。**另外，GitHub 上有尚未完成（排隊中、執行中）的手動 run 時也不可更新**（取代 Streamlit 版伺服器記憶體裡的 `DispatchLog`），所以按 F5、開新分頁或其他使用者開啟頁面，看到的都是同一個狀態。建立超過 10 分鐘仍未完成的 run 不再算鎖定，避免 run 卡住時一直停用（`RUN_LOCK_MINUTES`）。
+   - **流程**：頁面載入、按「重新載入資料」、倒數結束時都呼叫 `GET /api/update-status`，回傳可否更新、訊息、剩餘秒數、是否有更新進行中與伺服器時間。按下按鈕時呼叫 `POST /api/dispatch`，**伺服器端重新判斷一次（不信任瀏覽器）**，通過才觸發；`GH_DISPATCH_TOKEN` 只在 Function，不會到瀏覽器。
+   - **讀不到就不放行**：`pipeline_status` 讀取失敗或沒有任何列時，不放行並顯示「無法確認最後更新時間，暫不開放手動更新」；GitHub API 失敗、`api/` 連不上（例如本機只跑頁面）或未設定 `GH_REPO`／`GH_DISPATCH_TOKEN` 時同樣不放行並顯示原因（遮蔽 token 與金鑰）。若有列但從未成功更新過（欄位皆空），視為可更新。
    - **以成功時間計算**：上次手動更新失敗不會鎖住按鈕，使用者可立即重試。
-   - 呼叫 `POST https://api.github.com/repos/{GH_REPO}/actions/workflows/weather_worker.yml/dispatches`，Header 帶 `Authorization: Bearer {GH_DISPATCH_TOKEN}`，Body `{"ref": "main"}`（成功回傳 HTTP 204；官方文件現列 200，程式將 200 與 204 都視為成功）。
-   - **觸發後 60 秒自動重整頁面**：成功後按鈕改為「更新中…」並停用、顯示倒數；60 秒到就整頁重跑（重新查詢資料庫與 `pipeline_status`，地區／縣市的選擇會保留）。重整後若最後成功時間仍早於觸發時間，提示「更新尚未完成，請稍後按『重新載入資料』」；已完成則顯示「資料已更新完成」。另提供「重新載入資料」按鈕。
-   - 頁面上另顯示「最近排程更新」與「最近手動更新」時間。
-   - **觸發後鎖定**：觸發成功後，伺服器記憶體（`DispatchLog`，所有連線共用）記下觸發時間。從觸發起 5 分鐘內，只要資料庫還沒出現比觸發時間更新的成功紀錄，按鈕就維持停用並顯示「已觸發更新，正在等待完成」——所以按 F5、開新分頁或其他使用者開啟頁面，按鈕都不會重新開放。資料庫出現新的成功紀錄即解除（之後回到 20 分鐘間隔規則）；超過 5 分鐘也解除，避免 workflow 失敗時一直鎖住。app 重啟或休眠會清掉記錄，最多因此多觸發一次。
-   - **間隔倒數與自動重整**：按鈕被「距上次成功更新不滿 20 分鐘」擋住時，訊息改為即時倒數「距上次更新僅 N 分鐘，需間隔 20 分鐘，還需 mm:ss 才可更新」。剩餘時間只在該次腳本執行時算一次，**「N 分鐘」與「mm:ss」兩個數字都由瀏覽器的 JavaScript 從同一個剩餘秒數推導、每 250ms 一起更新**（`st.iframe` 嵌入的小段 HTML，`frontend/countdown.py`），兩者保證同步，伺服器不需要每秒重跑；伺服器端只設定一個在「剩餘時間 + 1 秒」後才觸發的 `st.fragment(run_every=…)`，時間到時整頁重跑一次（重新讀取 `pipeline_status`），按鈕即變成可按。限制：① 倒數框在 iframe 內，讀不到 Streamlit 的主題，以瀏覽器的淺色／深色偏好近似；② 歸零那一下的整頁重跑會關閉開著的告警設定視窗（未儲存的修改會消失）；③ 只處理間隔這一種情況，「已觸發更新，正在等待完成」仍需手動重新載入。
-   - **已知的競爭情形**：兩個使用者在同一瞬間（尚未有人完成觸發記錄）按下，仍可能各觸發一次；workflow 的 `concurrency` 最多保留一個執行中加一個排隊中，因此最多多跑 1 次。
+   - 觸發方式：`POST https://api.github.com/repos/{GH_REPO}/actions/workflows/weather_worker.yml/dispatches`，Header 帶 `Authorization: Bearer {GH_DISPATCH_TOKEN}`，Body `{"ref": "main"}`（成功回傳 HTTP 204；官方文件現列 200，程式將 200 與 204 都視為成功）。查詢未完成的 run 用同一個 workflow 的 `runs?event=workflow_dispatch`。
+   - **觸發後 60 秒自動重新載入**：成功後按鈕改為「⏳ 更新中…」並停用、顯示倒數；60 秒到就重新查詢資料與狀態（地區／縣市的選擇不變，開著的告警設定視窗也不受影響）。之後以伺服器時間比對：最後成功時間仍早於觸發時間時提示「更新尚未完成，請稍後按『重新載入資料』」，已完成則顯示「資料已更新完成」。
+   - 頁面上另顯示「最近排程更新」與「最近手動更新」時間，以及「手動更新需間隔 20 分鐘」。
+   - **間隔倒數與自動再查**：被「距上次成功更新不滿 20 分鐘」擋住時，訊息改為即時倒數「距上次更新僅 N 分鐘，需間隔 20 分鐘，還需 mm:ss 才可更新」；兩個數字由同一個剩餘秒數推導、每 250ms 一起更新，保證同步（`lib/countdown.ts`）。時間到後多等 1 秒再查一次狀態，按鈕即變成可按。
+   - **已知的競爭情形**：觸發後到 run 出現在 GitHub API 之間約數秒，這段時間其他人按下仍可能多觸發一次；workflow 的 `concurrency` 會讓多出的那次排隊，不會同時執行。
    - 只更新資料，不提供修改排程週期的功能。
 8. **告警設定**（管理者；標題列的「⚙️ 告警設定」按鈕，以視窗呈現）：
-   - **入口**：標題列三顆按鈕由左至右為「🔄 立即更新」「♻️ 重新載入資料」「⚙️ 告警設定」，沿用相同的按鈕樣式（`width="stretch"`，沒有自訂 CSS）；未設定 Supabase secrets 時停用。**手機版**（視窗寬度 ≤ 640px，與 `st.columns` 自動堆疊的寬度相同）：三顆按鈕收進「☰ 選單」（`st.popover`；只有按鈕縮成約 1/3 寬並靠右，選項區沿用整列寬度），點開才顯示三個選項；電腦版不變。選項區的寬度與位置由 Streamlit 依外層容器計算（以 transform 定位），若用 CSS 改 `left`／`right` 或縮小外層容器，選項區會跑出畫面，所以不要動。實作上兩組按鈕各畫一次（key 以 `_d`、`_m` 區分，容器 key 為 `hdr_desktop`、`hdr_mobile`），由 `style.py` 的 CSS 媒體查詢依寬度只顯示其中一組，兩組的動作相同。
-   - **兩個視窗（`st.dialog`，尺寸建立時固定、不能中途更換，且同一時間只能開一個）**：
-     - **登入視窗（小，≤ 500px）**：只有一個密碼輸入框，看不到任何設定；輸入密碼後由資料庫函式 `admin_get_alert_settings` 驗證，錯誤顯示「密碼錯誤」且不透露其他資訊；連續失敗越多次，前端額外等待越久（最多 5 秒，加上資料庫端每次 1 秒）。**登入成功後整頁重跑（關閉登入視窗），由標題列下方的邏輯接著開啟設定視窗。**
-     - **設定視窗（大，≤ 1280px）**：設定表格有 8 欄，需要寬視窗。內容：三個發送時段勾選（08:45、14:45、20:45，視窗為「該時段到下一個勾選時段之前」）；22 縣市可編輯表格（依北→中→南→東→離島排序）：`啟用`、`降雨`＋`降雨門檻 (%)`、`低溫`＋`低溫門檻 (°C)`、`高溫`＋`高溫門檻 (°C)`，縣市欄不可編輯、數值有範圍限制；按鈕：**💾 儲存**、**全部啟用／全部關閉**（只改表格，仍需按儲存）、**重新載入（放棄未儲存的修改）**、**登出**。沒有啟用任何縣市時顯示「尚未啟用任何縣市，不會發送告警」；儲存後提示「設定會在下一個發送時段生效」。
-   - **開啟邏輯**（按下按鈕時）：未登入或已閒置逾時 → 登入視窗；已登入 → 設定視窗，並**先從資料庫重新讀取設定**（關閉視窗後未儲存的修改不保留，也能反映在 SQL Editor 直接改過的值）；讀取時若密碼已失效（例如管理者在資料庫換了密碼）→ 登出並開登入視窗。關閉視窗（X、點外面、ESC）不會登出，再按一次按鈕不必重新輸入密碼，直到閒置逾時或按「登出」。
-   - **儲存前檢查**：前端驗證（門檻範圍、整數、不可空白、縣市不重複）不過就不呼叫資料庫；資料庫另有 CHECK 把關。
-   - **密碼處理**：密碼只在本次連線的伺服器記憶體（`st.session_state`），不寫入日誌、不顯示；錯誤訊息一律遮蔽密碼；登入框使用 `clear_on_submit`。重新整理頁面即登出。
-   - **閒置逾時**：超過 15 分鐘沒有操作，**下一次操作**（按按鈕或在視窗內操作）就會登出並要求重新登入（不做背景計時）。在主流程偵測到時立刻以 toast 提示；在設定視窗內偵測到（需關閉視窗）時，提示暫存到下一次整頁重跑後顯示，因為 `st.rerun()` 之前建立的 toast 會被丟掉。
-   - **視窗行為（`st.dialog` 的特性）**：視窗內操作元件只重跑視窗本身，不會重新載入地圖、圖表或資料庫查詢；視窗內呼叫整頁 `st.rerun()` 會關閉視窗（登出、密碼失效時使用）；整頁重跑時視窗會消失（例如「立即更新」倒數 60 秒後的自動重整，屬少見情況）。
-   - 畫面內容在 `src/tw_forecast/frontend/admin_ui.py`（`AdminPanel`：登入與設定兩個畫面、登入狀態管理），資料層在 `frontend/admin.py`（`AlertSettingsService`）；`app.py` 只負責標題列按鈕、兩個 `st.dialog` 外殼與開啟邏輯。本階段沒有新增任何 Streamlit Secrets（沿用 `anon` 金鑰）。
+   - **入口**：標題列三顆按鈕由左至右為「🔄 立即更新」「♻️ 重新載入資料」「⚙️ 告警設定」；未設定 Supabase 連線時停用。**手機版**（視窗寬度 ≤ 640px）：三顆按鈕收進「☰ 選單」（按鈕約 1/3 寬並靠右），點開才上下排列顯示，按了其中一顆就收起；按鈕只有一組，由 CSS 切換顯示方式。
+   - **兩個視窗（原生 `<dialog>` 的 modal 模式，同一時間只開一個；按 Esc、右上角 ✕ 或點視窗外都會關閉）**：
+     - **登入視窗（小，≤ 420px）**：只有一個密碼輸入框，看不到任何設定；輸入密碼後由資料庫函式 `admin_get_alert_settings` 驗證，錯誤顯示「密碼錯誤」且不透露其他資訊，輸入框清空；空白不送出。連續失敗越多次，前端額外等待越久（最多 5 秒，加上資料庫端每次 1 秒）。登入成功後關閉登入視窗、開啟設定視窗。
+     - **設定視窗（大，≤ 1000px）**：內容：三個發送時段勾選（08:45、14:45、20:45，視窗為「該時段到下一個勾選時段之前」）；22 縣市設定表格（依北→中→南→東→離島排序）：`啟用`、`降雨`＋`降雨門檻 (%)`、`低溫`＋`低溫門檻 (°C)`、`高溫`＋`高溫門檻 (°C)`，縣市欄不可編輯、數值輸入框有範圍與間距；按鈕：**💾 儲存**、**全部啟用／全部關閉**（只改表格，仍需按儲存）、**重新載入（放棄未儲存的修改）**、**登出**。沒有啟用任何縣市時顯示「尚未啟用任何縣市，不會發送告警」；儲存後以資料庫實際存下的值重新顯示，並提示「設定會在下一個發送時段生效」。手機上表格可左右捲動。
+   - **開啟邏輯**（按下按鈕時）：未登入或已閒置逾時 → 登入視窗；已登入 → 設定視窗，並**先從資料庫重新讀取設定**（關閉視窗後未儲存的修改不保留，也能反映在 SQL Editor 直接改過的值）；讀取時若密碼已失效（例如管理者在資料庫換了密碼）→ 登出並提示重新登入。關閉視窗不會登出，再按一次按鈕不必重新輸入密碼，直到閒置逾時或按「登出」。
+   - **儲存前檢查**：前端驗證（門檻範圍、整數、不可空白、縣市不重複，最多列出 5 項）不過就不呼叫資料庫；資料庫另有 CHECK 把關。
+   - **密碼處理**：密碼只放在這個頁面的記憶體（React 的 `useRef`），不寫入 localStorage、不寫入日誌、不顯示；錯誤訊息一律遮蔽密碼；送出後輸入框清空。重新整理或關閉分頁即登出（`VERCEL_PLAN.md` §6 的方式 A）。
+   - **閒置逾時**：超過 15 分鐘沒有操作即登出（每 15 秒檢查一次，視窗關著也會登出），以右下角浮動提示「已因閒置超過 15 分鐘登出，請重新登入」；登出、密碼失效也以浮動提示告知。
+   - 資料層在 `lib/admin.ts`（`AlertSettingsService`），登入狀態與流程在 `hooks/useAdminSession.ts`，畫面在 `components/AdminDialogs.tsx`；沿用 `anon` 金鑰，沒有新增任何環境變數。
 9. **玻璃擬態外觀（淺色／深色）**：
-   - **主題**：`.streamlit/config.toml` 以 `[theme.light]`（淡米白 `#F7F5F0`；頁面背景另由 `style.py` 畫成由左 `#F7F5F0` 到右 `#EAF3F8` 淡天空藍的線性漸層）與 `[theme.dark]`（深藍灰 `#12141C`）各設底色、文字色、主色。使用者在頁面右上角「⋮」→ Settings 選 Light / Dark / Use system setting；跟隨系統時依系統決定。Streamlit 只讀「執行目錄」的設定檔：Community Cloud 從 repo 根目錄執行、本機從 `forecast/` 執行，故根目錄與 `forecast/.streamlit/` 各放一份，**內容須相同**。
-   - **樣式**：`frontend/style.py` 在頁面開頭注入一次 CSS。淺色／深色用 CSS `light-dark()` 寫在同一份，Streamlit 會依目前主題設定 `.stApp` 的 `color-scheme`，切換主題時立即生效、不需重跑頁面。顏色與模糊程度集中為 CSS 變數（`--glass-bg`、`--glass-border`、`--glass-shadow`、`--glass-blur`、`--glow-1～3`）。
-   - **套用範圍**：背景在淺色為左右線性漸層（淡米白 → 淡天空藍）加三個淡光暈（左上暖橘、右上天藍、右下淡紫），深色為深藍灰底加三個較濃的彩色光暈（玻璃需要背後有色彩變化才看得出模糊）；重點摘要 4 張卡片為玻璃卡片（降雨機率同樣用卡片，外觀一致），載入時由下往上依序淡入（每張間隔 80ms）、降雨進度條由左長出，滑鼠移上去微微浮起、光暈變亮；地圖區與分頁區各包在一個玻璃容器裡（`st.container(key="glass_map")`、`key="glass_tabs"`，與卡片同一組玻璃變數，手機上內距縮小）；分頁頁籤改成藥丸狀（選中的頁籤為淡主色底加細框，滑鼠移上去淡淡亮起，原本的底線與灰色基準線隱藏）；系統設定「減少動態效果」（`prefers-reduced-motion`）時不套用這些動畫；兩個告警視窗背後頁面模糊，視窗加圓角、細邊框與陰影，視窗底色沿用主題（內部表格不透明，做成半透明會難讀）；地圖圖例與提示框見第 6 點。
-   - **不套用**：原生元件（下拉、單選、按鈕）與明細表格內部（畫布不透明）維持主題原樣。
-   - **已知限制**：深色主題下地圖底圖仍是淺色圖磚（OpenStreetMap）；使用的 Streamlit 內部選擇器（`.stApp`、`.stDialog`、`.stTabs`，以及頁籤的 `[role="tab"]`／`[aria-selected]`、`.react-aria-SelectionIndicator`，後兩者來自 Streamlit 1.64 採用的 React Aria）在升級版本時須重新檢查外觀；捲動收起提示框依賴 vega-tooltip 的 `#vg-tooltip-element` 與 `visible` class，若改名只會退回「提示框停留」的舊行為。
+   - **主題**：跟著作業系統／瀏覽器的 `prefers-color-scheme` 自動切換淺色（淡米白 `#F7F5F0` → 淡天空藍 `#EAF3F8` 的左右漸層）與深色（深藍灰 `#12141C`），切換時立即生效；頁面上沒有另外的主題選單（Streamlit 版可在「⋮」→ Settings 手動選）。
+   - **樣式**：全部在 `web/src/styles/global.css`。顏色與模糊程度集中為 `:root` 的 CSS 變數（`--glass-bg`、`--glass-border`、`--glass-shadow`、`--glass-blur`、`--glow-1～3` 等），深色模式在媒體查詢內覆寫。
+   - **套用範圍**：背景在淺色為左右線性漸層加三個淡光暈（左上暖橘、右上天藍、右下淡紫），深色為深藍灰底加三個較濃的彩色光暈（玻璃需要背後有色彩變化才看得出模糊；背景放在固定的 `body::before`，因為 iOS Safari 不支援 `background-attachment: fixed`）；重點摘要 4 張卡片為玻璃卡片，載入時由下往上依序淡入（每張間隔 80ms）、降雨進度條由左長出，滑鼠移上去微微浮起、光暈變亮；地圖區與分頁區各為一個玻璃面板（手機上內距縮小）；按鈕與下拉也是玻璃外觀（展開的選項清單不透明）；分頁頁籤為藥丸狀（選中的頁籤為淡主色底加細框，滑鼠移上去淡淡亮起）；系統設定「減少動態效果」（`prefers-reduced-motion`）時不套用動畫；滑鼠移上的效果只在有滑鼠的裝置（`hover: hover`）套用，觸控螢幕點過之後不會一直亮著；兩個告警視窗背後頁面模糊，視窗加圓角、細邊框與陰影，視窗底色不透明（內部表格才讀得清楚）；地圖圖例與提示框見第 6 點。
+   - **已知限制**：深色主題下地圖底圖仍是淺色圖磚（OpenStreetMap）。
 10. **日期查詢（歷史預報存檔）**：
-   - **位置**：明細分頁的最右邊新增「📅 日期查詢」分頁（全台／地區層級在「後續時段」右邊；單一縣市層級在「一週預報」右邊）。
+   - **位置**：明細分頁的最右邊「📅 日期查詢」分頁（全台／地區層級在「後續時段」右邊；單一縣市層級在「一週預報」右邊）。
    - **可選日期**：下拉選單只列**資料庫裡有完整 12 小時時段**的日期，範圍為今天前 3 天到後 7 天（以台灣日期計）；只查一個縣市的時段起點就能得到清單（所有縣市同一批寫入），筆數約 30。預設為「請選擇日期」，選了才查表格。
    - **範圍**：跟著上方的地區／縣市選擇（全台、地區、單一縣市）。
    - **內容**：只有表格，**沒有折線圖**，欄位與「後續時段」相同（縣市、地區、時段含日期、天氣現象、最低／最高／平均溫、降雨機率、舒適度；選了地區時隱藏「地區」欄，單一縣市時隱藏「縣市」與「地區」）；**只顯示被選日期當天的資料**，依縣市（地區順序）→ 時間排序，溫度數字同樣依級距上色。表格上方註明為預報存檔、非實測值。
@@ -666,40 +672,31 @@ jobs:
    - **查詢上限**：只查被選的那一天（全台約 44 列、單一地區約 8～12 列、單一縣市約 2 列），遠低於 Supabase 單次 1000 筆的上限。
    - **資料性質**：資料表以（縣市、時段起、時段迄）為主鍵，同一時段重複寫入即覆蓋，因此歷史列是該時段結束前最後一次寫入的預報，看不到預報的變動過程；只有排程成功執行過的時段才有資料。
 
-### 8.2 資料庫連線方式（擇一）
+### 8.2 資料庫連線方式
 
-**方案 A（預設）：`supabase-py` + `anon` key**
-```python
-import streamlit as st
-from datetime import datetime
-from zoneinfo import ZoneInfo
-from supabase import create_client
+瀏覽器以 `@supabase/supabase-js` 與 `anon` key 連線（`lib/supabase.ts`，整頁共用一個連線，不保存登入 session）：
 
-sb = create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_ANON_KEY"])
-now = datetime.now(ZoneInfo("Asia/Taipei")).isoformat()
-rows = (sb.table("weather_forecasts").select("*")
-          .lte("forecast_time_start", now).gt("forecast_time_end", now)
-          .execute().data)
+```ts
+import { createClient } from "@supabase/supabase-js";
+
+const sb = createClient(import.meta.env.VITE_SUPABASE_URL, import.meta.env.VITE_SUPABASE_ANON_KEY,
+  { auth: { persistSession: false } });
+const now = new Date().toISOString();
+const { data, error } = await sb.from("weather_forecasts").select("*")
+  .lte("forecast_time_start", now).gt("forecast_time_end", now);
 ```
-- 權限完全由 §5.1 的 RLS `SELECT` policy 控制，`anon` key 無法寫入。
+- 權限完全由 §5.1 的 RLS `SELECT` policy 控制，`anon` key 無法寫入；告警設定只能透過需要密碼的資料庫函式（`sb.rpc("admin_get_alert_settings", …)`）讀寫。
+- `api/` 的 Function 只需要讀 `pipeline_status`，直接呼叫 Supabase REST（`/rest/v1/pipeline_status`），不另外安裝套件。
+- Streamlit 版曾評估的 `psycopg2` + 唯讀資料庫帳號方案不再適用：瀏覽器無法直連 PostgreSQL。
 
-**方案 B：`psycopg2` + 唯讀資料庫帳號**
-```python
-import psycopg2
-conn = psycopg2.connect(st.secrets["SUPABASE_DB_URL"])  # 唯讀角色 + Pooler 連線字串
-```
-- 於 Supabase 建立僅有 `SELECT ON weather_forecasts` 權限的資料庫角色，連線字串放入 Streamlit Secrets。
-- Streamlit Community Cloud 需使用 Supabase 的 **Pooler（Session / Transaction）連線字串**，因直連端點預設僅支援 IPv6，可能無法從 Streamlit Cloud 連線。
-- 需要複雜 SQL（分組、視窗函數）時優先採用此方案。
-
-### 8.3 部署至 Streamlit Community Cloud
+### 8.3 部署至 Vercel
 1. 將 repo 推送至 GitHub（`HW1/` 為 repo 根目錄，見 §9）。
-2. 於 [Streamlit Community Cloud](https://streamlit.io/cloud) 連結 GitHub 帳號，選擇此 repo、分支 `main`，**Main file path** 設為 `forecast/streamlit_app/app.py`。
-3. 於 **Advanced settings → Secrets** 貼上 §4.2 所列前端 Secrets（TOML 格式）。
-4. 相依套件由 **repo 根目錄**的 `requirements.txt` 提供（Streamlit Cloud 只會在主程式檔所在目錄與 repo 根目錄尋找，放在 `forecast/` 會偵測不到，導致 `ModuleNotFoundError`）（需包含 `streamlit`、`supabase`、`pandas`、`folium`、`streamlit-folium`、`requests`；使用方案 B 另加 `psycopg2-binary`）。
-5. 部署後，程式碼 push 至 `main` 會自動重新部署；資料更新則由 GitHub Actions 寫入 Supabase，無需重新部署。
+2. 於 Vercel 匯入此 repo，**Root Directory** 設為 `forecast/web`，Framework Preset 選 **Vite**（`vercel.json` 已指定）；建置指令為 `npm run build`（型別檢查 → Vitest → 打包，測試失敗就不部署）。
+3. 於 **Settings → Environment Variables** 設定 §4.2 所列變數（類型選 **Config**、勾選 Production）。
+4. **只在前端有變動時建置**：`vercel.json` 的 `ignoreCommand` 為 `git diff --quiet HEAD^ HEAD -- .`，只改後端或文件時不會觸發建置。
+5. 部署後，push 至 `main` 會自動重新部署；資料更新則由 GitHub Actions 寫入 Supabase，頁面重新整理即可看到，不需要重新部署。
 
-> 不使用 GitHub Pages，前端網址由 Streamlit Community Cloud 提供（`*.streamlit.app`）。
+> 正式網址：<https://tw-forecast.vercel.app>。Streamlit 版（`streamlit` 分支）仍部署於 Streamlit Community Cloud，作為備用。
 
 ---
 
@@ -707,60 +704,52 @@ conn = psycopg2.connect(st.secrets["SUPABASE_DB_URL"])  # 唯讀角色 + Pooler 
 
 > **Repo 根目錄約定**：GitHub 只會執行 **repo 根目錄**下的 `.github/workflows/`。本專案以 `HW1/` 作為 **repo 根目錄**，專案程式碼與文件全部放在 `forecast/` 子資料夾；`.github/`、`.gitignore` 與 `requirements.txt` 只在根目錄保留一份。因此：
 > - workflow 位於 `HW1/.github/workflows/`，每個 `run` 步驟以 `working-directory: forecast` 執行，`cache-dependency-path` 指向根目錄的 `requirements.txt`。
-> - Streamlit Cloud 的 Main file path 為 `forecast/streamlit_app/app.py`，`requirements.txt` 放在 repo 根目錄（全 repo 唯一一份，workflow 以 `../requirements.txt` 引用）。
+> - `requirements.txt`（只有後端套件）放在 repo 根目錄，全 repo 唯一一份，workflow 以 `../requirements.txt` 引用。
+> - Vercel 的 Root Directory 為 `forecast/web`（前端自成一個 npm 專案，`package.json` 在該資料夾）。
 
 ```text
 HW1/                                     # repo 根目錄
 ├── .devcontainer/
-│   └── devcontainer.json                # GitHub Codespaces／Dev Container 開發環境（Python 3.11，自動啟動 Streamlit）
+│   └── devcontainer.json                # GitHub Codespaces／Dev Container 開發環境（Python 3.11 + Node.js，自動啟動前端開發伺服器）
 ├── .github/
 │   └── workflows/
 │       └── weather_worker.yml           # 自動排程: 執行流程一
 ├── .gitignore                           # 安全防護清單（全 repo 唯一一份）
-├── CLAUDE.md                            # 給 Claude Code 的專案指示（Streamlit 慣例與本專案開發流程）
-├── .streamlit/
-│   └── config.toml                      # 淺色／深色主題（Streamlit Cloud 從根目錄執行，讀這一份）
-├── requirements.txt                     # 相依套件清單（須在根目錄，供 Streamlit Cloud 偵測）
+├── CLAUDE.md                            # 給 Claude Code 的專案指示（本專案開發流程）
+├── requirements.txt                     # 後端相依套件（requests、python-dotenv、supabase）
 ├── requirements-dev.txt                 # 開發用套件（pytest），部署不需要
 └── forecast/                            # 專案程式碼與文件
-    ├── src/tw_forecast/                 # 正式程式碼（前後端共用一個套件；OOP + 模組化，每個模組開頭有輸入／輸出說明）
-    │   ├── config.py                    # 共用常數：時區、資料集、排程時槽（須與 workflow cron 一致）、資料表名、發送時段
-    │   ├── backend/                     # 流程一（GitHub Actions 執行）
-    │   │   ├── cli.py                   # 命令列入口：組裝 Pipeline（--dry-run / --from-sample）、執行來源判斷、失敗記錄
-    │   │   ├── pipeline.py              # Pipeline：取得預報 → 解析 → 寫入 → 告警判斷 → 推播（相依皆由外部注入）
-    │   │   ├── cwa_client.py            # CwaClient：打氣象署 API（重試、429 中止）
-    │   │   ├── parser.py                # ForecastParser：巢狀 JSON → 平面列
-    │   │   ├── slots.py                 # 排程時槽計算（純函式）
-    │   │   ├── alerts.py                # 告警規則（設定解析、判斷視窗、條件命中；純函式，不連網）
-    │   │   ├── notifier.py              # TelegramNotifier（訊息組合、跳脫、400 重送、token 不外洩）
-    │   │   ├── repository.py            # ForecastRepository / StatusRepository / AlertSettingsRepository（寫入與讀取資料庫）
-    │   │   ├── security.py              # 機密遮蔽
-    │   │   └── errors.py                # AbortRun、NotifyError
-    │   └── frontend/                    # 流程二（Streamlit 儀表板）
-    │       ├── repository.py            # ForecastQuery：Supabase 唯讀查詢（不快取；即時只取最新批次；日期查詢）
-    │       ├── session.py               # secrets、Supabase 連線（st.cache_resource）
-    │       ├── scope.py                 # Scope：地區／縣市篩選範圍、依範圍整理資料與圖表長表
-    │       ├── tables.py                # 明細表格與「後續時段」的資料整理
-    │       ├── charts.py                # SeriesChart：氣溫／降雨機率趨勢圖（monotone 曲線；單一縣市三條線合併加溫度帶）
-    │       ├── map_view.py              # TemperatureMap：Folium 地圖（標記顯示溫度、雙指手勢、可標出被選縣市）
-    │       ├── temperature.py           # 氣溫級距與顏色
-    │       ├── rain.py                  # 降雨告警門檻（60%）與降雨色階
-    │       ├── regions.py               # 縣市 → 分區 (北/中/南/東/離島) 對照表
-    │       ├── formatting.py            # 顯示小工具（天氣 emoji、日夜判斷、時間文字）
-    │       ├── update_gate.py           # 「立即更新」的間隔判斷
-    │       ├── github_dispatch.py       # WorkflowDispatcher：觸發後端 workflow
-    │       ├── admin.py                 # 告警設定的資料層（AlertSettingsService、驗證、密碼遮蔽）
-    │       ├── admin_ui.py              # AdminPanel：告警設定視窗內容與登入狀態管理
-    │       ├── style.py                 # 玻璃擬態 CSS（淺色／深色）與摘要卡片 HTML
-    │       └── views/                   # 頁面各區塊：header、filters、summary、map_section、tabs（trends／tables_view／date_query）、admin_dialogs
+    ├── src/tw_forecast/                 # 後端程式碼（OOP + 模組化，每個模組開頭有輸入／輸出說明）
+    │   ├── config.py                    # 常數：時區、資料集、排程時槽（須與 workflow cron 一致）、資料表名、發送時段
+    │   └── backend/                     # 流程一（GitHub Actions 執行）
+    │       ├── cli.py                   # 命令列入口：組裝 Pipeline（--dry-run / --from-sample）、執行來源判斷、失敗記錄
+    │       ├── pipeline.py              # Pipeline：取得預報 → 解析 → 寫入 → 告警判斷 → 推播（相依皆由外部注入）
+    │       ├── cwa_client.py            # CwaClient：打氣象署 API（重試、429 中止）
+    │       ├── parser.py                # ForecastParser：巢狀 JSON → 平面列
+    │       ├── slots.py                 # 排程時槽計算（純函式）
+    │       ├── alerts.py                # 告警規則（設定解析、判斷視窗、條件命中；純函式，不連網）
+    │       ├── notifier.py              # TelegramNotifier（訊息組合、跳脫、400 重送、token 不外洩）
+    │       ├── repository.py            # ForecastRepository / StatusRepository / AlertSettingsRepository（寫入與讀取資料庫）
+    │       ├── security.py              # 機密遮蔽
+    │       └── errors.py                # AbortRun、NotifyError
     ├── scripts/
     │   └── fetch_and_store.py           # 🌟 流程一入口（Actions 執行；只呼叫 backend.cli.main，支援 --dry-run / --from-sample）
-    ├── streamlit_app/
-    │   └── app.py                       # 🌟 流程二入口（Streamlit Cloud 的 Main file；只負責依序串接 frontend 各區塊）
-    ├── tests/                           # 單元與整頁測試（pytest；不連網、不連資料庫，也不依賴 samples/）
-    │   ├── fakes.py                     # 假 Supabase、假 API 回應與假預報資料
-    │   ├── backend/                     # 解析、時槽、告警規則、推播、API 客戶端、Pipeline、Repository、CLI
-    │   └── frontend/                    # 純函式、Scope／表格、查詢、圖表與地圖、告警設定資料層、GitHub 觸發、整頁煙霧測試（AppTest）
+    ├── web/                             # 🌟 流程二：儀表板（Vite + React + TypeScript；Vercel 的 Root Directory）
+    │   ├── api/                         # Vercel Functions：update-status.ts（GET）、dispatch.ts（POST）
+    │   ├── src/
+    │   │   ├── main.tsx、App.tsx        # 入口與頁面組裝
+    │   │   ├── lib/                     # 資料存取與純函式（查詢、篩選範圍、表格、圖表規格、地圖、級距、更新門檻、告警設定資料層）
+    │   │   ├── server/                  # updateService.ts：「立即更新」的伺服器端邏輯（只給 api/ 用）
+    │   │   ├── hooks/                   # useUpdateFlow、useAdminSession、useDarkMode
+    │   │   ├── components/              # 畫面元件（篩選、摘要卡片、地圖、分頁、表格、告警設定視窗等）
+    │   │   └── styles/global.css        # 全部樣式（淺色／深色、玻璃擬態、動畫、手機版）
+    │   ├── tests/                       # Vitest（不連網、不連資料庫；以非台灣時區執行）
+    │   ├── .env.example                 # 前端環境變數範本（實際 .env.local 不得 commit）
+    │   ├── package.json、vite.config.ts、tsconfig.json
+    │   └── vercel.json                  # Framework、只在前端變動時建置
+    ├── tests/                           # 後端測試（pytest；不連網、不連資料庫，也不依賴 samples/）
+    │   ├── fakes.py                     # 假 Supabase、假 API 回應
+    │   └── backend/                     # 解析、時槽、告警規則、推播、API 客戶端、Pipeline、Repository、CLI
     ├── checks/                          # 需要真實連線的檢查（手動執行，不屬於自動測試）
     │   ├── check_cwa_api.py             # 驗證 CWA API 並存下範例回應到 samples/
     │   ├── check_rls.py                 # 驗證 RLS：anon 可讀不可寫、service_role 可寫
@@ -771,14 +760,12 @@ HW1/                                     # repo 根目錄
     │   └── get_telegram_chat_id.py      # 查詢 TELEGRAM_CHAT_ID（token 只讀本機 .env）
     ├── pytest.ini                       # pythonpath = src tests
     ├── ARCHITECTURE.md                  # 程式架構說明：每個檔案的功能、前後端資料流、修改對照表
-    ├── .streamlit/
-    │   ├── config.toml                  # 淺色／深色主題（與根目錄 .streamlit/config.toml 內容相同，本機執行用）
-    │   └── secrets.toml.example         # 前端 Secrets 範本 (實際 secrets.toml 不得 commit)
+    ├── VERCEL_PLAN.md                   # 前端改寫到 Vercel 的決定、步驟與交接紀錄
     ├── sql/
     │   └── init_supabase.sql            # Supabase DDL 建表 + RLS 腳本
     ├── .env.example                     # 後端環境變數範本
     ├── SPECIFICATION.md                 # 系統規格書 (本文件)
-    └── README.md                        # 專案快速上手指引
+    └── README.md                        # 作業報告
 ```
 
 ---
@@ -794,6 +781,7 @@ HW1/                                     # repo 根目錄
 | **M4** | **GitHub Actions 自動化** | 排程管線 | `.github/workflows/weather_worker.yml` 依排程與手動觸發成功執行流程一，資料寫入 Supabase，密鑰皆來自 GitHub Secrets。 |
 | **M5** | **Streamlit 讀 DB 渲染** | 前端呈現 | Streamlit 儀表板以 `supabase-py`（或 `psycopg2`）成功讀取 Supabase，完整呈現地圖、折線圖與明細表格，並含「立即更新」按鈕。 |
 | **M6** | **部署至 Streamlit Community Cloud** | 前端上線 | 於 Streamlit Community Cloud 部署成功，Secrets 設定完成，公開網址可正常顯示最新資料。 |
+| **M7** | **前端改寫並部署至 Vercel** | 前端上線 | Vite + React 版與 Streamlit 版逐項功能一致；「立即更新」在 Vercel 實際觸發並驗證鎖定與倒數；告警設定以真實密碼登入並儲存成功；電腦與手機、淺色與深色截圖確認。 |
 
 ---
 
@@ -807,12 +795,14 @@ HW1/                                     # repo 根目錄
 | M3 | ✅ 完成 | Telegram 推播已實測（手機收到範例訊息）。告警設定化（第 1 階段）已完成：縣市為主鍵、降雨／低溫／高溫各自的開關與門檻、可選發送時段（08:45／14:45／20:45）、W1 判斷視窗、預設全部縣市關閉、讀不到設定就不發送；單元與流程測試通過，並用真實資料模擬過。設定表已在 Supabase 建立，2026-09-20 23:52 的排程已用新版程式成功執行（該時槽不是發送時段，未發送）。**2026-09-21 08:45 的發送時段已實際收到由排程推播的告警（使用者確認）**，整條流程（排程觸發 → 讀取資料庫設定 → 條件判斷 → Telegram 推播）驗證正常。測試用設定由使用者自行還原 |
 | M4 | ✅ 完成 | 手動觸發與自動排程皆已實際成功：`cron`（台灣時間 02:45 起每 3 小時）已觀察到兩次自動觸發——2026-09-20 20:55（較時槽 20:45 延遲約 10 分鐘）與 23:52（較時槽 23:45 延遲約 7 分鐘），皆成功寫入預報並更新 `pipeline_status` 的 `schedule` 列（最後為 23:53）。**使用者確認昨日到今日（2026-09-21 前後）的排程皆穩定取得資料**，後續時槽也持續自動觸發 |
 | M5 | ✅ 完成 | 地區／縣市互斥篩選、地圖（提示含平均、最高、最低溫與降雨機率；手機雙指才操作）、趨勢圖（曲線；全台與地區可切換指標，單一縣市最高／平均／最低三條線合併，氣溫圖 Y 軸從 0 開始）、明細與後續時段表格、日期查詢；溫度數字依級距上色（摘要、明細表格、地圖提示）。「立即更新」（20 分鐘間隔、觸發後 60 秒自動重整）已於 2026-09-20 21:27 實際驗證。告警設定：標題列「⚙️ 告警設定」按鈕，登入為小視窗、登入後設定為大視窗；測試涵蓋視窗內容 30 項、視窗開啟接線 26 項，並以真實瀏覽器（Edge）截圖確認標題列與登入視窗，設定視窗以假資料確認排版；資料庫端以真實密碼驗證登入與儲存。**告警設定視窗已在部署端由使用者驗證無誤**（輸入密碼前須將輸入法切為英文） |
-| M6 | ✅ 完成 | 已部署至 Streamlit Community Cloud 並正常顯示資料；部署端 Python 版本為 3.14（使用者確認）。`requirements.txt` 已固定 `streamlit==1.64.0`、`streamlit-folium==0.27.4`（以 Python 3.14 試算安裝確認可解析；Streamlit 的實際安裝版本未另行查證）。**溫度上色與縣市氣溫圖改版（v1.8.3）、告警設定視窗、玻璃擬態外觀（v1.9.0，淺色／深色）、日期查詢分頁（v1.10.0）與手機版選單和卡片間隔（v1.11.0）部署後皆已由使用者確認功能正常**；**程式碼重構為 `src/tw_forecast/`（v1.12.0）已由使用者在雲端另建測試 app（分支 `refactor/src-layout`）驗證：資料、地圖與分頁皆正常顯示**，隨後合併進 `main`；**v1.12.1（立即更新鎖定）已由使用者在雲端驗證：按 F5 後按鈕維持停用並顯示鎖定訊息；地圖手機雙指手勢也已由使用者在手機上驗證正常**；**v1.12.2（已選縣市時點「全部地區」回到全台）已由使用者在雲端驗證**；**v1.15.1（手機上滑動時收起趨勢圖提示框）與 v1.15.2（手機上點縣市下拉不跳鍵盤）已由使用者於 2026-09-23 在手機上確認**；v1.13.0（間隔倒數）已部署，手機上的倒數框排版尚待使用者實際確認；多檔案更新時可能出現舊模組快取的 `ImportError`，於 Manage app 選 Reboot app 即可 |
+| M6 | ✅ 完成（Streamlit 版） | 已部署至 Streamlit Community Cloud 並正常顯示資料；部署端 Python 版本為 3.14（使用者確認）。`requirements.txt` 已固定 `streamlit==1.64.0`、`streamlit-folium==0.27.4`（以 Python 3.14 試算安裝確認可解析；Streamlit 的實際安裝版本未另行查證）。**溫度上色與縣市氣溫圖改版（v1.8.3）、告警設定視窗、玻璃擬態外觀（v1.9.0，淺色／深色）、日期查詢分頁（v1.10.0）與手機版選單和卡片間隔（v1.11.0）部署後皆已由使用者確認功能正常**；**程式碼重構為 `src/tw_forecast/`（v1.12.0）已由使用者在雲端另建測試 app（分支 `refactor/src-layout`）驗證：資料、地圖與分頁皆正常顯示**，隨後合併進 `main`；**v1.12.1（立即更新鎖定）已由使用者在雲端驗證：按 F5 後按鈕維持停用並顯示鎖定訊息；地圖手機雙指手勢也已由使用者在手機上驗證正常**；**v1.12.2（已選縣市時點「全部地區」回到全台）已由使用者在雲端驗證**；**v1.15.1（手機上滑動時收起趨勢圖提示框）與 v1.15.2（手機上點縣市下拉不跳鍵盤）已由使用者於 2026-09-23 在手機上確認**；v1.13.0（間隔倒數）已部署，手機上的倒數框排版尚待使用者實際確認；多檔案更新時可能出現舊模組快取的 `ImportError`，於 Manage app 選 Reboot app 即可 |
+| M7 | ✅ 完成 | 2026-09-26 完成（分 7 個階段，見 `VERCEL_PLAN.md`）：正式網址 <https://tw-forecast.vercel.app>；「立即更新」在 Vercel 實際觸發一次，使用者確認更新中倒數、F5／新分頁仍停用、完成訊息與 20 分鐘間隔倒數皆正常；告警設定由使用者以真實密碼在本機登入、修改、儲存並還原成功；自動測試為 Vitest 182 項（前端）與 pytest 86 項（後端）。`main` 上的 Streamlit 版前端已刪除，保留在 `streamlit` 分支 |
 
 ### 10.2 待辦
 - 留意 **2026-10-19** GitHub 的 `ubuntu-latest` 會遷移到 Ubuntu 26（Actions 日誌上的通知）：遷移後觀察排程是否正常；若有相容性問題，可先把 `runs-on` 暫時固定為 `ubuntu-24.04`。目前未受影響，遷移後的行為尚未驗證。
 
 ### 10.3 版本紀錄
+- **v2.0.0**：前端改寫為 Vite + React + TypeScript 並部署到 Vercel（`forecast/web/`，規劃與過程見 `VERCEL_PLAN.md`）。功能與 Streamlit 版逐項一致，差異：「立即更新」改由 Vercel Functions（`api/update-status`、`api/dispatch`）在伺服器端判斷並觸發，觸發後的鎖定改查 GitHub 上未完成的手動 run（取代伺服器記憶體的 `DispatchLog`）；觸發後 60 秒改為重新查詢資料（不整頁重跑，開著的視窗不受影響）；告警設定的密碼只放在頁面記憶體，閒置逾時改為背景檢查；選擇的地區／縣市保存在網址參數；表格可點欄位排序；主題跟隨系統設定。`main` 上刪除 Streamlit 版前端（`src/tw_forecast/frontend/`、`streamlit_app/`、`tests/frontend/`、`.streamlit/`）與只給前端用的套件（`pandas`、`streamlit`、`folium`、`streamlit-folium`）；Streamlit 版保留在 `streamlit` 分支（其 v1.16.0、v1.16.1 只存在於該分支）。
 - **v1.15.3**：驗證狀態更新：v1.15.1（手機上滑動時收起趨勢圖提示框）與 v1.15.2（手機上點縣市下拉不跳鍵盤）已由使用者於 2026-09-23 在手機上確認正常。
 - **v1.15.2**：手機上點「縣市」下拉不再跳出鍵盤：縣市選單設 `filter_mode=None`（Streamlit 1.64 在手機上選項 > 10 個時輸入框可打字，會叫出鍵盤），代價是電腦上也不能打字搜尋縣市；新增 1 項整頁測試；已在瀏覽器確認縣市輸入框為 `inputmode="none"`。
 - **v1.15.1**：手機上點趨勢圖資料點跳出的提示框，在頁面捲動或手指滑動時自動收起（見 §8.1 第 4 點）；只放腳本的 `st.html` 外層容器以 CSS 隱藏，避免多出一個元素間距；新增 1 項整頁測試。已在瀏覽器以模擬手機（390px、觸控）驗證：提示框出現後不滑動會停留，手指滑動或頁面捲動後收起、再點仍會出現。
@@ -847,4 +837,4 @@ HW1/                                     # repo 根目錄
 
 ---
 
-*本規格書目前為 v1.8.2。*
+*本規格書目前為 v2.0.0。*

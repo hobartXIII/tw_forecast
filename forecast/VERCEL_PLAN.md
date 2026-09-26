@@ -4,7 +4,7 @@
 目前的前端架構見 [ARCHITECTURE.md](ARCHITECTURE.md)，需求與規格見 [SPECIFICATION.md](SPECIFICATION.md)。
 
 - **建立日期**：2026-09-25
-- **狀態**：階段 0 完成（2026-09-25 Vercel 部署成功並讀到資料庫）；階段 1 完成（資料層與純函式移植）；階段 2 完成（唯讀畫面）；階段 3 完成（地圖）；階段 4 完成（視覺細修，Vitest 132 項）；階段 5 完成（立即更新，2026-09-26 Vercel 實測通過，Vitest 152 項）；階段 6 完成（告警設定，2026-09-26 本機以真實密碼實測通過，Vitest 182 項）；下一步階段 7（文件與切換）
+- **狀態**：階段 0 完成（2026-09-25 Vercel 部署成功並讀到資料庫）；階段 1 完成（資料層與純函式移植）；階段 2 完成（唯讀畫面）；階段 3 完成（地圖）；階段 4 完成（視覺細修，Vitest 132 項）；階段 5 完成（立即更新，2026-09-26 Vercel 實測通過，Vitest 152 項）；階段 6 完成（告警設定，2026-09-26 本機以真實密碼實測通過，Vitest 182 項）；階段 7 完成（文件與切換，2026-09-26）。**改寫全部完成**，正式入口為 Vercel 版（<https://tw-forecast.vercel.app>），Streamlit 版保留在 `streamlit` 分支作為備用
 
 ## 1. 已確定的決定
 
@@ -128,7 +128,7 @@ forecast/
 | 4 視覺細修 | ✅ 完成 | `a32638c` |
 | 5 立即更新 | ✅ 完成（Vercel 實測通過） | `719e2e4` |
 | 6 告警設定 | ✅ 完成（真實密碼實測通過） | 見 git log |
-| **7 文件與切換** | **⏭️ 下一步** | — |
+| 7 文件與切換 | ✅ 完成 | 見 git log |
 
 `streamlit` 分支（Community Cloud 部署）：已關閉立即更新（v1.16.0，`0b15eea`）、修正地圖 Ctrl 提示一閃即逝（v1.16.1，`d071f90`）。
 
@@ -154,8 +154,16 @@ forecast/
 - 手機版標題列的三顆按鈕收進「☰ 選單」
 - **實測（2026-09-26 本機通過）**：以真實密碼登入、修改一個值並儲存，再到 Supabase 或重新開啟視窗確認；最後改回原本的設定
 
+### 階段 7 文件與切換（完成）
+
+- 正式入口：Vercel 版；Streamlit 版保留在 `streamlit` 分支（Community Cloud）作為備用
+- `main` 刪除 `src/tw_forecast/frontend/`、`streamlit_app/`、`tests/frontend/`、`.streamlit/`（兩份 `config.toml` 與 `secrets.toml.example`）；`tests/fakes.py` 移除只給前端用的 `forecast_rows`；`requirements.txt` 只留後端套件（`requests`、`python-dotenv`、`supabase`）。不另外打 tag：`streamlit` 分支就是對照組，刪除前的內容也在 git 歷史
+- 文件：`ARCHITECTURE.md`（前端章節改為 `web/`）、`SPECIFICATION.md`（v2.0.0，§4.2、§8、§9、§10 改為 Vercel 版）、`README.md`（部署網址、技術選型、測試、附錄、改寫心得）、`CLAUDE.md`（刪除 Streamlit 通用慣例，只留本專案做法）、`.devcontainer/devcontainer.json`（改為 Python + Node.js，啟動前端開發伺服器）
+- 硬碟上 `forecast/.streamlit/secrets.toml`（未追蹤、含金鑰）保留，切到 `streamlit` 分支本機執行時要用
+
 ### 之後的待辦
 
+- README 的截圖（`assets/screenshots/`）仍是 Streamlit 版，視需要重新產生；部署網址 QR code 已新增 Vercel 版（`assets/deploy_qrcode_vercel.png`，以 `segno` 產生），Streamlit 版的保留
 - 使用者待辦：
   - Streamlit Cloud 的 Secrets 可刪除 `GH_REPO`、`GH_DISPATCH_TOKEN`（token 本身保留，Vercel 版要用）
   - 在 Streamlit 版電腦上確認「按住 Ctrl」提示會停留約 1 秒（v1.16.1）
@@ -166,18 +174,18 @@ forecast/
 git clone https://github.com/hobartXIII/tw_forecast.git
 cd tw_forecast/forecast/web
 npm install
-cp .env.example .env.local      # 填入 VITE_SUPABASE_URL、VITE_SUPABASE_ANON_KEY（與 Streamlit secrets 相同的值）
+cp .env.example .env.local      # 填入 VITE_SUPABASE_URL、VITE_SUPABASE_ANON_KEY（anon）；要測「立即更新」再填 GH_REPO、GH_DISPATCH_TOKEN
 npm run dev                     # http://localhost:5173
 npm test                        # Vitest（不連網、不連資料庫）
 npm run build                   # 型別檢查 → 測試 → 打包（Vercel 建置時也跑這個）
 ```
 
-後端與 Streamlit 版的 Python 測試照舊：依 README 建 `.venv`，`pip install -r requirements.txt -r requirements-dev.txt`（兩個檔案都在 repo 根目錄），再到 `forecast/` 執行 `python -m pytest`。
+後端的 Python 測試照舊（Streamlit 版的測試在 `streamlit` 分支）：依 README 建 `.venv`，`pip install -r requirements.txt -r requirements-dev.txt`（兩個檔案都在 repo 根目錄），再到 `forecast/` 執行 `python -m pytest`。
 
 ### 注意事項
 
 - **在 `streamlit` 分支 commit 時不要用 `git add -A`**：`forecast/web/` 在該分支沒有被 `.gitignore` 排除，硬碟上的 `node_modules`、`dist`、`.env.local`（含金鑰）會被加進去。一律指定檔案路徑。
-- 在 `main` 上的 Python 前端（`src/tw_forecast/frontend/`、`streamlit_app/`）已凍結，不再修改；要改 Streamlit 版就到 `streamlit` 分支改。
+- `main` 上已沒有 Python 前端；要改 Streamlit 版就到 `streamlit` 分支改。
 - Vercel 環境變數一律選 **Config**：選 Secret 的變數在 Function 執行時讀不到（2026-09-26 `GH_DISPATCH_TOKEN` 設成 Secret 時 `/api/update-status` 一直回「尚未設定」，改成 Config 並 Redeploy 後正常）。token 雖是 Config，只有 `api/` 讀取且訊息會遮蔽；不可取 `VITE_` 開頭的名稱
 - Vercel 的環境變數改了之後要 Redeploy 才生效（`VITE_` 變數是建置時打包進去的）；值不要加引號、貼上前把輸入法切成英文。
 - 本機用 `npx vite` 起的開發伺服器，停止時要確認 5173 埠已釋放（背景工作被停止時子行程可能還在）。

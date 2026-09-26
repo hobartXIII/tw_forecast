@@ -4,14 +4,15 @@
 | :--- | :--- |
 | 作業 | HW1 |
 | 作者 | [hobartXIII](https://github.com/hobartXIII) |
-| 部署網址 | <https://twforecast-gxbrpkkigluvdh48shimyo.streamlit.app/> |
+| 部署網址 | <https://tw-forecast.vercel.app/>（Vercel 版，正式）<br><https://twforecast-gxbrpkkigluvdh48shimyo.streamlit.app/>（Streamlit 版，`streamlit` 分支，備用） |
 | 原始碼 | <https://github.com/hobartXIII/tw_forecast> |
-| 相關文件 | [SPECIFICATION.md](SPECIFICATION.md)（完整規格與版本紀錄）、[ARCHITECTURE.md](ARCHITECTURE.md)（檔案功能對照）、[README_backup.md](README_backup.md)（原版 README） |
+| 相關文件 | [SPECIFICATION.md](SPECIFICATION.md)（完整規格與版本紀錄）、[ARCHITECTURE.md](ARCHITECTURE.md)（檔案功能對照）、[VERCEL_PLAN.md](VERCEL_PLAN.md)（前端改寫到 Vercel 的規劃與過程）、[README_backup.md](README_backup.md)（原版 README） |
 
 <p align="center">
-  <img src="assets/deploy_qrcode.png" alt="部署網址 QR code" width="150">
+  <img src="assets/deploy_qrcode_vercel.png" alt="部署網址（Vercel 版）QR code" width="150">
+  <img src="assets/deploy_qrcode.png" alt="部署網址（Streamlit 版）QR code" width="150">
   <img src="assets/github_qrcode.png" alt="GitHub Repo QR code" width="150">
-  <br><sub>左：部署網址　右：GitHub Repo</sub>
+  <br><sub>左：部署網址（Vercel 版，正式）　中：部署網址（Streamlit 版，備用）　右：GitHub Repo</sub>
 </p>
 
 ## 一、目的
@@ -26,7 +27,7 @@
 2. **視覺化**：以地圖、趨勢圖與表格呈現全台、各地區與單一縣市的天氣資訊。
 3. **主動通知**：依自訂條件推播 Telegram 告警，而且只在符合條件、指定時段才發送。
 4. **安全與免費**：金鑰不外流、前端只能讀取；全部使用免費方案部署在雲端。
-5. **課程延伸**：延伸課程中 Python、Pandas、Streamlit、Folium 台灣互動地圖的實作，把資料存取從本機 `sqlite3` 改為雲端 Supabase（PostgreSQL）。
+5. **課程延伸**：延伸課程中 Python、Pandas、Streamlit、Folium 台灣互動地圖的實作，把資料存取從本機 `sqlite3` 改為雲端 Supabase（PostgreSQL）；之後再把前端改寫成 Vite + React 部署到 Vercel，比較兩種做法（見第五節）。
 
 ## 二、規劃與設計
 
@@ -35,16 +36,18 @@
 系統分成兩個流程，彼此只透過 Supabase 資料庫交換資料（讀寫分離）：
 
 - **流程一（後端，擷取入庫）**：GitHub Actions 依排程執行 `fetch_and_store.py`，呼叫氣象署 API、清洗資料後寫入 Supabase；排程執行時依告警設定推播 Telegram。
-- **流程二（前端，讀庫呈現）**：Streamlit 儀表板以唯讀的 `anon` 金鑰讀取 Supabase，不呼叫氣象署 API，也不持有寫入金鑰。
+- **流程二（前端，讀庫呈現）**：儀表板（Vite + React，部署在 Vercel）在瀏覽器以唯讀的 `anon` 金鑰讀取 Supabase，不呼叫氣象署 API，也不持有寫入金鑰；只有「立即更新」經由 Vercel 的伺服器端 Function 觸發 GitHub Actions。
 
 ```text
-[中央氣象署 API] → [GitHub Actions 每 3 小時] → [Supabase] → [Streamlit 儀表板]
-                       fetch_and_store.py                     唯讀查詢 (anon key)
-                              │
+[中央氣象署 API] → [GitHub Actions 每 3 小時] → [Supabase] → [Vercel 儀表板]
+                       fetch_and_store.py    ↑                 唯讀查詢 (anon key)
+                              │              └── 立即更新 ── api/dispatch（伺服器端）
                               └→ [Telegram 告警推播]（僅排程、符合條件時）
 ```
 
 ![系統架構圖](architecture_diagram.svg)
+
+> 上圖是 Streamlit 版的架構；改寫到 Vercel 後後端與資料庫不變，前端的最新架構見 [ARCHITECTURE.md](ARCHITECTURE.md)。
 
 ### 2.2 技術選型
 
@@ -53,8 +56,9 @@
 | 資料來源 | 中央氣象署 `F-D0047-091` | 一次回傳全台 22 縣市一週預報，一次呼叫就夠 |
 | 排程執行 | GitHub Actions | 免費、不需自備伺服器，金鑰可放 GitHub Secrets |
 | 資料庫 | Supabase（PostgreSQL） | 免費雲端資料庫，內建 RLS 權限控管與 RPC 函式 |
-| 前端 | Streamlit + Folium + Altair | 全部用 Python 開發，延續課程內容，部署簡單 |
-| 前端部署 | Streamlit Community Cloud | 免費，push 到 `main` 自動部署 |
+| 前端 | Vite + React + TypeScript、Vega-Lite（趨勢圖）、Leaflet（地圖） | 地圖、圖表、篩選都在瀏覽器執行，不需要常駐伺服器；圖表沿用 Streamlit 版 Altair 的 Vega-Lite 定義 |
+| 前端部署 | Vercel（Hobby） | 免費，push 到 `main` 自動部署；靜態頁走 CDN、不會休眠；「立即更新」用 Vercel Functions |
+| 前端（第一版） | Streamlit + Folium + Altair（`streamlit` 分支，Community Cloud） | 全部用 Python 開發，延續課程內容；改寫後保留作為備用與對照 |
 | 推播 | Telegram Bot | 原規劃 Google Chat，但個人 Gmail 帳號無法使用其 webhook／API，改用免費且設定簡單的 Telegram |
 
 ### 2.3 資料來源與用量規劃
@@ -87,7 +91,8 @@
 
 - **讀寫分離**：只有後端持有 `service_role` 寫入金鑰；前端只放 `anon` 金鑰，RLS 限制它只能讀預報與狀態。
 - **管理者密碼**：只存 bcrypt 雜湊，驗證在資料庫函式內完成；錯誤密碼會延遲回應，無法確定時一律拒絕。
-- **金鑰不外流**：所有金鑰存在 GitHub Secrets／Streamlit Secrets／本機 `.env`，不進 repo；錯誤訊息與日誌會遮蔽機密。
+- **金鑰不外流**：所有金鑰存在 GitHub Secrets／Vercel 環境變數／本機 `.env`、`.env.local`，不進 repo；GitHub token 只在 Vercel 的伺服器端 Function，不會送到瀏覽器；錯誤訊息與日誌會遮蔽機密。
+- **告警設定的密碼**：登入後只放在頁面的記憶體，不寫入瀏覽器儲存空間；閒置 15 分鐘、登出、重新整理或關閉分頁即清除。
 
 ### 2.7 前端設計
 
@@ -95,6 +100,7 @@
 - **篩選**：地區與縣市互斥，可在全台、單一地區、單一縣市之間切換，所有圖表跟著變化。
 - **手機友善**：手機版按鈕收進「☰ 選單」；地圖要兩指才能拖動，避免捲動頁面時誤觸。
 - **外觀**：玻璃擬態風格，淺色／深色主題跟隨系統設定；溫度依級距上色。
+- **網址保留選擇**：選的地區或縣市會寫進網址（如 `?city=臺中市`），重新整理或分享網址都會保留。
 
 ## 三、實際成果
 
@@ -108,6 +114,8 @@
 - **設定有保護**：儀表板只能讀取資料，告警設定需要管理者密碼才能修改。
 
 ### 3.2 畫面截圖
+
+> 以下截圖是 Streamlit 版；Vercel 版的版面、功能與外觀與其一致（改寫時逐項對照）。
 
 **儀表板（電腦版、深色主題）**：標題列三顆按鈕、地區／縣市篩選、摘要卡片與平均氣溫地圖。
 
@@ -130,16 +138,16 @@
 
 ### 3.3 測試與驗證
 
-- **自動測試**：232 項 pytest 全數通過，涵蓋後端解析與告警判斷、前端純函式，以及用 Streamlit `AppTest` 的整頁測試；不連網、不連資料庫。
+- **自動測試**：後端 86 項 pytest、前端 182 項 Vitest 全數通過，涵蓋後端解析與告警判斷、前端純函式、「立即更新」的伺服器端邏輯，以及在 jsdom 中渲染整個頁面的測試；不連網、不連資料庫。前端測試刻意以非台灣時區執行，確保時間換算不依賴執行環境。（改寫前的 Streamlit 版有 232 項 pytest，保留在 `streamlit` 分支。）
 - **真實連線檢查**：`checks/` 內的腳本分別驗證氣象署 API、RLS 權限（13 項全數通過）、管理者函式（錯誤密碼、空值、SQL 注入字串皆被拒絕）與 Telegram 推播。
 - **實際運作**：
   - 自動排程已穩定執行（GitHub Actions 的 cron 實際觸發時間約延遲 7～10 分鐘）。
   - 2026-09-21 08:45 的發送時段已實際收到排程推播的告警，完整走過「排程 → 讀取設定 → 條件判斷 → Telegram」。
-  - 儀表板已部署到 Streamlit Community Cloud，電腦與手機上的主要功能皆經實際操作確認。
+  - 儀表板已部署到 Vercel（先前的 Streamlit 版部署在 Streamlit Community Cloud），電腦與手機上的主要功能皆經實際操作確認；「立即更新」已在 Vercel 實際觸發，確認倒數、F5 後仍鎖定與完成提示；告警設定已用真實密碼登入並儲存。
 
 ### 3.4 開發歷程
 
-自 2026-09-20 起共 63 個 commit，版本從 v1.2.0 演進到 v1.15.3，主要階段：
+自 2026-09-20 起共約 80 個 commit，版本從 v1.2.0 演進到 v2.0.0，主要階段：
 
 | 版本 | 內容 |
 | :--- | :--- |
@@ -148,6 +156,7 @@
 | v1.9～v1.11 | 玻璃擬態外觀與深淺色主題、日期查詢分頁、手機版選單 |
 | v1.12 | 程式碼重構為 `src/tw_forecast/`（backend／frontend 分層）；修正立即更新與篩選的問題 |
 | v1.13～v1.15 | 更新倒數、視覺強化、手機上的操作細節（提示框收起、下拉不跳鍵盤） |
+| v2.0 | 前端改寫為 Vite + React + TypeScript 並部署到 Vercel（分 7 個階段：骨架、資料層、唯讀畫面、地圖、視覺、立即更新、告警設定）；Streamlit 版移到 `streamlit` 分支 |
 
 ## 四、遇到的問題與解決
 
@@ -159,17 +168,22 @@
 | 雲端出現 `ModuleNotFoundError` | Streamlit Cloud 只在主程式目錄與 repo 根目錄找 `requirements.txt` | 把 `requirements.txt` 放在 repo 根目錄 |
 | 按「立即更新」後按 F5，按鈕又能按 | 觸發後到 workflow 寫入成功紀錄前，資料庫看起來仍可更新 | 伺服器記住觸發時間，5 分鐘內且尚無新紀錄時維持停用 |
 | 手機上滑動頁面時誤觸地圖 | 單指滑動被地圖攔截 | 地圖改成兩指操作，單指用來捲動頁面 |
-| 手機上點縣市下拉會跳出鍵盤 | 選項多時下拉選單可打字搜尋 | 縣市選單關閉搜尋輸入 |
+| 手機上點縣市下拉會跳出鍵盤 | 選項多時下拉選單可打字搜尋 | 縣市選單關閉搜尋輸入（Vercel 版改用原生下拉，本來就不會跳鍵盤） |
+| Vercel 上沒有伺服器記憶體可記住「剛觸發過更新」 | Serverless Function 每次執行都是新的，不保留狀態 | 改為查 GitHub 上是否有尚未完成的手動 run，F5、新分頁、其他使用者看到同一個狀態，也不必改資料庫 |
+| Vercel 的 Function 一直說「尚未設定 GH_DISPATCH_TOKEN」 | 環境變數選了 Secret 類型，Function 執行時讀不到 | 改成 Config 類型並 Redeploy |
+| 手機上趨勢圖的圖例最後一項被切掉 | 圖例排成一列，手機寬度放不下 | 手機上圖例每列最多 3 項 |
 
 ## 五、比較與未來改進
 
 ### 5.1 目前架構
 
-後端（GitHub Actions 排程抓資料、寫入 Supabase、推播 Telegram）和前端（Streamlit 儀表板）只透過 Supabase 交換資料，彼此不直接呼叫。因此前端換部署平台時，**後端、資料庫與告警推播都不用改**，要改寫的只有 `src/tw_forecast/frontend/` 與 `streamlit_app/`。
+後端（GitHub Actions 排程抓資料、寫入 Supabase、推播 Telegram）和前端只透過 Supabase 交換資料，彼此不直接呼叫。因此前端換部署平台時，**後端、資料庫與告警推播都不用改**。實際改寫到 Vercel 時也是如此：後端程式、GitHub Actions、資料表、RLS 與資料庫函式完全沒有修改，只新增了 `forecast/web/`。
 
 ### 5.2 Streamlit Community Cloud 與 Vercel 比較
 
-| 面向 | Streamlit Community Cloud（目前） | Vercel |
+> 下表是改寫前的評估；改寫後的實際經驗整理在表格下方。
+
+| 面向 | Streamlit Community Cloud（改寫前） | Vercel |
 | :--- | :--- | :--- |
 | 開發語言 | 全部 Python，可沿用 pandas、Altair、folium 與現有測試 | 前端需改寫成 JavaScript／TypeScript（例如 Next.js）；Streamlit 需要常駐的 WebSocket 伺服器，無法部署在 Vercel |
 | 開發速度 | 快，元件現成，不用寫 API 與前端狀態管理 | 慢，要自己處理版面、狀態、API 路由 |
@@ -183,11 +197,17 @@
 | 伺服器狀態 | 有常駐行程，`DispatchLog`、登入狀態可放記憶體 | Function 不保留狀態，這類狀態必須移到資料庫或 cookie |
 | 維護成本 | 一種語言、一套測試 | Python（後端）與 TypeScript（前端）兩套語言、兩套測試 |
 
-**結論**：目前是個人使用、小流量的儀表板，Streamlit 開發快、能沿用 Python 程式與測試，仍是合適的選擇。若之後要公開推廣、在意首次載入速度、需要自訂網域或更細緻的手機版介面，再考慮改寫到 Vercel。
+**當初的結論**：個人使用、小流量的儀表板，Streamlit 開發快、能沿用 Python 程式與測試，是合適的選擇；若要公開推廣、在意首次載入速度或更細緻的手機版介面，再考慮改寫到 Vercel。
+
+**實際改寫後的心得**：
+- **比預期順利的**：圖表直接沿用 Vega-Lite 定義；純函式逐一移植並把 pytest 的案例搬成 Vitest，行為容易對照；不需要伺服器渲染，靜態頁加兩支 Function 就夠。
+- **變好的**：沒有休眠、首次載入快；互動不再整頁重跑（例如「立即更新」倒數結束後不會關掉開著的視窗）；原生 `<select>`、`<dialog>` 讓手機操作更自然；樣式不再依賴 Streamlit 內部的 CSS 選擇器。
+- **要另外處理的**：伺服器沒有記憶體可放狀態（「觸發後鎖定」改查 GitHub runs）；前端常數（發送時段、縣市清單）與後端各有一份，要一起改；Vercel 環境變數的類型選錯會讓 Function 讀不到。
+- 當初建議的 Next.js、ISR、共用 JSON、資料庫欄位記錄觸發時間等，實際都沒有用到，理由見 [VERCEL_PLAN.md](VERCEL_PLAN.md)。
 
 ### 5.3 改寫部署到 Vercel 的建議
 
-> 實際採用的方案已另外整理在 [VERCEL_PLAN.md](VERCEL_PLAN.md)：框架改用 Vite + React（而非下面第 1 點的 Next.js），「觸發後鎖定」改查 GitHub workflow runs（而非第 3 點的資料庫欄位）。以下保留為當初的評估。
+> 實際採用的方案整理在 [VERCEL_PLAN.md](VERCEL_PLAN.md)：框架改用 Vite + React（而非下面第 1 點的 Next.js），「觸發後鎖定」改查 GitHub workflow runs（而非第 3 點的資料庫欄位），告警設定的密碼留在頁面記憶體（而非第 4 點的 cookie），常數直接搬到 TypeScript（而非第 7 點的共用 JSON）。以下保留為當初的評估。
 
 1. **框架**：Next.js（App Router）＋ TypeScript，用 `@supabase/supabase-js` 讀資料。`anon` key 放在 `NEXT_PUBLIC_SUPABASE_URL`、`NEXT_PUBLIC_SUPABASE_ANON_KEY`；`GH_REPO`、`GH_DISPATCH_TOKEN` 只設成伺服器端環境變數（不加 `NEXT_PUBLIC_` 前綴）。Supabase 的 RLS 與 RPC 不用改。
 2. **資料更新**：預報頁用 ISR 定時重建。更好的做法是在 `fetch_and_store.py` 成功寫入後，呼叫 Vercel 的重新驗證 API（帶密鑰），資料一更新頁面就重建，不必等下一次定時。
@@ -201,7 +221,7 @@
 
 ## 六、結論
 
-本專案完成了「自動抓取 → 雲端保存 → 儀表板呈現 → 條件推播」的完整流程，並全部使用免費方案部署在雲端。設計上以讀寫分離為核心：後端是唯一的寫入端，前端只持有唯讀金鑰，告警設定另外用管理者密碼保護，兼顧方便與安全。實作過程中也學到，雲端服務的細節（排程延遲、時區、套件偵測路徑、手機操作）往往要實際部署後才會發現，因此除了自動測試外，實機驗證同樣重要。未來若要公開推廣，可依第五節的評估把前端改寫到 Vercel，後端與資料庫則可沿用。
+本專案完成了「自動抓取 → 雲端保存 → 儀表板呈現 → 條件推播」的完整流程，並全部使用免費方案部署在雲端。設計上以讀寫分離為核心：後端是唯一的寫入端，前端只持有唯讀金鑰，告警設定另外用管理者密碼保護，兼顧方便與安全。實作過程中也學到，雲端服務的細節（排程延遲、時區、套件偵測路徑、手機操作）往往要實際部署後才會發現，因此除了自動測試外，實機驗證同樣重要。之後依第五節的評估把前端改寫到 Vercel，後端與資料庫完全沿用，也印證了讀寫分離、以資料庫為交會點的設計，讓前端可以獨立替換。
 
 ---
 
@@ -213,32 +233,37 @@
 
 ```text
 HW1/
-├── .devcontainer/devcontainer.json        # GitHub Codespaces／Dev Container 開發環境（自動啟動 Streamlit）
+├── .devcontainer/devcontainer.json        # GitHub Codespaces／Dev Container 開發環境（Python + Node.js，自動啟動前端）
 ├── .github/workflows/weather_worker.yml   # 排程與手動觸發流程一
 ├── .gitignore
-├── CLAUDE.md                              # 給 Claude Code 的專案指示（Streamlit 慣例與本專案開發流程）
-├── requirements.txt                       # 須在根目錄，Streamlit Cloud 才偵測得到
+├── CLAUDE.md                              # 給 Claude Code 的專案指示（本專案開發流程）
+├── requirements.txt                       # 後端套件（requests、python-dotenv、supabase）
 ├── requirements-dev.txt                   # 開發用（pytest），部署不需要
 └── forecast/
-    ├── src/tw_forecast/ # 正式程式碼：backend/（流程一）、frontend/（流程二）、config.py
+    ├── src/tw_forecast/ # 後端程式碼：backend/（流程一）、config.py
     ├── scripts/         # fetch_and_store.py（流程一入口，Actions 執行）
-    ├── tests/           # pytest 單元與整頁測試（不連網、不連資料庫）
+    ├── web/             # 流程二：儀表板（Vite + React + TypeScript；Vercel 的 Root Directory）
+    │   ├── api/         # Vercel Functions：update-status、dispatch（「立即更新」）
+    │   ├── src/         # lib/（資料與純函式）、components/、hooks/、styles/
+    │   └── tests/       # Vitest（不連網、不連資料庫）
+    ├── tests/           # 後端 pytest（不連網、不連資料庫）
     ├── checks/          # 需真實連線的手動檢查：check_cwa_api、check_rls、check_admin_rpc、check_notify
     ├── tools/           # make_admin_hash、get_telegram_chat_id
-    ├── sql/             # init_supabase.sql（weather_forecasts、pipeline_status、RLS、updated_at、時區）
-    ├── streamlit_app/   # app.py（流程二入口）
-    ├── .streamlit/      # secrets.toml.example
+    ├── sql/             # init_supabase.sql（資料表、RLS、告警設定、管理者函式、時區）
     ├── ARCHITECTURE.md  # 每個檔案的功能、資料流與「想改某功能該看哪裡」
     ├── SPECIFICATION.md
+    ├── VERCEL_PLAN.md   # 前端改寫到 Vercel 的規劃、決定與交接紀錄
     ├── README.md        # 作業報告
     └── README_backup.md # 改寫前的原版 README
 ```
 
+Streamlit 版的前端（`streamlit_app/`、`src/tw_forecast/frontend/`、`.streamlit/`）保留在 `streamlit` 分支。
+
 ### 附錄 B：本機環境建置
 
-以下指令都在 `forecast/` 目錄下執行。
+以下指令除非另外註明，都在 `forecast/` 目錄下執行。
 
-1. 安裝 Python 3.11+，建立虛擬環境並安裝套件：
+1. 安裝 Python 3.11+，建立虛擬環境並安裝後端套件：
    ```powershell
    python -m venv .venv
    .venv\Scripts\Activate.ps1
@@ -255,7 +280,7 @@ HW1/
    2. 打開你的機器人，按 **Start**（機器人必須先被你啟動才能傳訊息給你）。
    3. 取得 chat_id：`python tools/get_telegram_chat_id.py`（加 `--write` 可自動寫入 `.env`）。
    4. 確認手機收得到：`python checks/check_notify.py`（加 `--dry-run` 只印出訊息內容）。
-6. 啟用告警：建議在儀表板標題列按「⚙️ 告警設定」，勾選縣市的「啟用」、條件開關、門檻與發送時段後儲存（需先完成第 7 步的管理者密碼、第 9 步啟動前端）。也可以在 Supabase SQL Editor 直接執行（範例也在 `sql/init_supabase.sql` 檔尾）：
+6. 啟用告警：建議在儀表板標題列按「⚙️ 告警設定」，勾選縣市的「啟用」、條件開關、門檻與發送時段後儲存（需先完成第 7 步的管理者密碼；可用正式網址，或第 9 步在本機啟動前端）。也可以在 Supabase SQL Editor 直接執行（範例也在 `sql/init_supabase.sql` 檔尾）：
    ```sql
    UPDATE public.alert_city_settings SET enabled = true WHERE location_name = '臺北市';          -- 啟用臺北市
    UPDATE public.alert_city_settings SET rain_threshold = 0 WHERE location_name = '臺北市';       -- 降雨門檻 0：一定符合，用來測試推播
@@ -275,30 +300,40 @@ HW1/
    python scripts/fetch_and_store.py --dry-run --from-sample   # 讀 samples/ 離線測試
    python scripts/fetch_and_store.py                           # 正式：寫入 Supabase（本機視為手動，不推播；要測推播可設 GITHUB_EVENT_NAME=schedule）
    ```
-9. 前端本機執行：複製 `.streamlit/secrets.toml.example` 為 `.streamlit/secrets.toml`，填入 `SUPABASE_URL` 與 `SUPABASE_ANON_KEY`（**只放 `anon` key，不可放 `service_role`**），再啟動：
+9. 前端本機執行（需要 Node.js 20 以上；在 `forecast/web/` 執行）：
    ```powershell
-   streamlit run streamlit_app/app.py         # http://localhost:8501
+   npm install
+   copy .env.example .env.local     # 填入 VITE_SUPABASE_URL、VITE_SUPABASE_ANON_KEY（只放 anon key，不可放 service_role）
+   npm run dev                      # http://localhost:5173
    ```
-   要使用「立即更新」按鈕，另需 `GH_REPO`（`owner/repo`）與 `GH_DISPATCH_TOKEN`（僅授權 Actions 讀寫的 fine-grained PAT）。
+   `npm run dev` 同時提供頁面與 `api/`（「立即更新」）。要在本機使用「立即更新」，`.env.local` 另需 `GH_REPO`（`owner/repo`）與 `GH_DISPATCH_TOKEN`（僅授權 Actions 讀寫的 fine-grained PAT，**不可**加 `VITE_` 前綴）；沒填時按鈕會顯示「尚未設定」並停用。
 
 ### 附錄 C：測試指令
 
 ```powershell
+# 後端（在 forecast/ 執行）
 pip install -r ../requirements-dev.txt   # 只裝 pytest（開發用，不在 requirements.txt）
-python -m pytest                          # 在 forecast/ 執行；不連網、不連資料庫、不需要 .env 或 samples/
+python -m pytest                          # 不連網、不連資料庫、不需要 .env 或 samples/
+
+# 前端（在 forecast/web/ 執行）
+npm test                                  # Vitest；不連網、不連資料庫、不需要 .env.local
+npm run build                             # 型別檢查 → 測試 → 打包（Vercel 建置時也跑這個）
 ```
 
-- `tests/`：自動測試（後端與前端的純邏輯、假資料庫、整頁煙霧測試）。
+- `tests/`：後端自動測試（解析、告警判斷、推播、Pipeline 等，假資料庫）。
+- `web/tests/`：前端自動測試（純函式、查詢、圖表與地圖、告警設定、「立即更新」的伺服器端邏輯、整頁測試）。
 - `checks/`：需要真實連線的手動檢查（CWA、Supabase RLS、管理者函式、Telegram），不屬於自動測試。
 
 ### 附錄 D：部署步驟
 
 **GitHub Actions（後端）**：到 repo 的 Settings → Secrets and variables → Actions 新增 `WEATHER_API_KEY`、`SUPABASE_URL`、`SUPABASE_KEY`；要啟用告警再加 `TELEGRAM_BOT_TOKEN` 與 `TELEGRAM_CHAT_ID`（沒設也能執行，只是略過推播）。Secret 的值直接貼上，**不要加引號**。設好後到 Actions 分頁手動執行一次確認。
 
-**Streamlit Community Cloud（前端）**：
-1. 於 [share.streamlit.io](https://share.streamlit.io) 選此 repo、分支 `main`，**Main file path** 填 `forecast/streamlit_app/app.py`。
-2. Advanced settings → Secrets 以 TOML 格式貼上 `SUPABASE_URL`、`SUPABASE_ANON_KEY`（要用「立即更新」再加 `GH_REPO`、`GH_DISPATCH_TOKEN`）。
-3. 之後 push 到 `main` 會自動重新部署；資料由 GitHub Actions 更新，不必重新部署。
+**Vercel（前端）**：
+1. 於 Vercel 匯入此 repo，**Root Directory** 設為 `forecast/web`，Framework Preset 選 **Vite**。
+2. Settings → Environment Variables 新增 `VITE_SUPABASE_URL`、`VITE_SUPABASE_ANON_KEY`（anon），以及「立即更新」用的 `GH_REPO`、`GH_DISPATCH_TOKEN`。類型一律選 **Config**（選 Secret 的話 Function 讀不到），勾選 Production；值不要加引號，貼上前把輸入法切成英文。
+3. 之後 push 到 `main` 會自動重新部署（只改後端或文件時不會建置）；改了環境變數要到 Deployments 選 Redeploy 才生效。資料由 GitHub Actions 更新，不必重新部署。
+
+**Streamlit Community Cloud（備用）**：部署 `streamlit` 分支，Main file path 為 `forecast/streamlit_app/app.py`，步驟見該分支的 README。
 
 ### 附錄 E：常見問題
 
@@ -306,10 +341,9 @@ python -m pytest                          # 在 forecast/ 執行；不連網、�
 | :--- | :--- |
 | 啟用了縣市卻收不到告警 | 依序確認：① 已在 Supabase 執行新版 `init_supabase.sql`；② 在「⚙️ 告警設定」中該縣市有勾選「啟用」（即 `enabled = true`）；③ 目前排程時槽在設定視窗勾選的發送時段（08:45／14:45／20:45）；④ 條件有符合（可暫時把降雨門檻設為 0 測試）；⑤ GitHub Secrets 有 `TELEGRAM_BOT_TOKEN`、`TELEGRAM_CHAT_ID`；⑥ 是排程執行而非「立即更新」（手動更新不推播）。日誌會寫明略過的原因。 |
 | 「⚙️ 告警設定」登入時顯示「設定功能尚未啟用」 | 資料庫函式不存在：請在 Supabase 執行新版 `sql/init_supabase.sql`。若顯示「密碼錯誤」但確定密碼正確，代表還沒寫入雜湊值（見附錄 B 第 7 步的第 3 點）。 |
-| 「立即更新」按鈕是灰的 | ① 距上次成功更新不滿 20 分鐘（畫面會顯示還需等幾分鐘）；② 剛觸發過更新，正在等待完成（最多 5 分鐘，畫面顯示「已觸發更新，正在等待完成」）；③ 讀不到 `pipeline_status`（未執行新的 SQL、資料庫連線問題）而一律不放行。排程不受影響。 |
-| `ModuleNotFoundError: streamlit_folium` | Streamlit Cloud 找不到 `requirements.txt`。它只找主程式所在目錄與 repo 根目錄，須放在根目錄。 |
-| 「尚未設定 SUPABASE_URL / SUPABASE_ANON_KEY」 | 雲端要在 Secrets 設定；本機要建立 `.streamlit/secrets.toml`（不會被 commit）。 |
+| 「立即更新」按鈕是灰的 | 看按鈕下方的訊息：① 距上次成功更新不滿 20 分鐘（顯示倒數）；② GitHub 上有尚未完成的手動更新（「已觸發更新，正在等待完成」，最多 10 分鐘）；③ 讀不到 `pipeline_status` 或 GitHub API（顯示原因）；④「尚未設定 GH_REPO / GH_DISPATCH_TOKEN」：Vercel 沒有這兩個變數、類型選了 Secret、或改完沒有 Redeploy；本機則是 `.env.local` 沒填。排程不受影響。 |
+| 「尚未設定 VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY」 | Vercel 要在 Environment Variables 設定並 Redeploy（`VITE_` 變數是建置時打包進去的）；本機要建立 `forecast/web/.env.local`（不會被 commit）。 |
 | 儀表板縣市數是 44 而不是 22 | 資料表裡有新舊兩批時段重疊的資料（氣象署第一個時段會隨時間縮短）。前端只取最新一批，因此需要 workflow 至少成功寫入一次帶 `updated_at` 的資料。 |
 | `updated_at` 顯示 UTC | 於 Supabase 執行 `sql/init_supabase.sql`（含 `ALTER DATABASE ... SET timezone`），並用新的連線／SQL 分頁查詢。 |
-| `ImportError`（改了程式卻沒生效） | 長時間執行的 Streamlit 可能沿用舊模組，尤其一次改動多個檔案時。本機重啟 `streamlit run`；雲端到 Manage app 選 Reboot app。 |
+| 本機 `npm run dev` 停止後再啟動說 5173 埠被占用 | 背景的 node 行程還在。找出占用 5173 的行程結束它（PowerShell：`Get-NetTCPConnection -LocalPort 5173`）。 |
 | Actions 日誌出現「ubuntu-latest 將於 2026-10-19 遷移到 Ubuntu 26」 | 只是 GitHub 的通知，不是錯誤，不影響目前執行。遷移後若排程出現安裝或相容性問題，可先把 workflow 的 `runs-on` 暫時固定成 `ubuntu-24.04`。（先前的「Node.js 20 deprecated」警告已在 v1.12.6 升級 `checkout@v7`、`setup-python@v7` 後消除。） |
