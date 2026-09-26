@@ -8,12 +8,14 @@
 | 原始碼 | <https://github.com/hobartXIII/tw_forecast> |
 | 相關文件 | [SPECIFICATION.md](SPECIFICATION.md)（完整規格與版本紀錄）、[ARCHITECTURE.md](ARCHITECTURE.md)（檔案功能對照）、[VERCEL_PLAN.md](VERCEL_PLAN.md)（前端改寫到 Vercel 的規劃與過程）、[README_backup.md](README_backup.md)（原版 README） |
 
-<p align="center">
-  <img src="assets/deploy_qrcode_vercel.png" alt="部署網址（Vercel 版）QR code" width="150">
-  <img src="assets/deploy_qrcode.png" alt="部署網址（Streamlit 版）QR code" width="150">
-  <img src="assets/github_qrcode.png" alt="GitHub Repo QR code" width="150">
-  <br><sub>左：部署網址（Vercel 版，正式）　中：部署網址（Streamlit 版，備用）　右：GitHub Repo</sub>
-</p>
+<!-- QR code 各放一格、左右加全形空白，彼此隔開才好掃描（GitHub 會過濾 CSS，格子內距也固定，只能用空白撐開） -->
+<table align="center">
+  <tr>
+    <td align="center">&emsp;&emsp;<img src="assets/deploy_qrcode_vercel.png" alt="部署網址（Vercel 版）QR code" width="150">&emsp;&emsp;<br><sub>部署網址（Vercel 版，正式）</sub></td>
+    <td align="center">&emsp;&emsp;<img src="assets/deploy_qrcode.png" alt="部署網址（Streamlit 版）QR code" width="150">&emsp;&emsp;<br><sub>部署網址（Streamlit 版，備用）</sub></td>
+    <td align="center">&emsp;&emsp;<img src="assets/github_qrcode.png" alt="GitHub Repo QR code" width="150">&emsp;&emsp;<br><sub>GitHub Repo</sub></td>
+  </tr>
+</table>
 
 ## 一、目的
 
