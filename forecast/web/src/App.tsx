@@ -1,6 +1,6 @@
 /** 儀表板（對應 Streamlit 版的 streamlit_app/app.py）。
 
-由上而下：[A] 標題與按鈕、[C] 最近更新時間、[D] 地區／縣市篩選、[E] 預報時段與過期警示、
+由上而下：[A] 標題與按鈕、[B] 立即更新的提示與倒數、[C] 最近更新時間、[D] 地區／縣市篩選、[E] 預報時段與過期警示、
 [F] 摘要卡片、[G] 地圖、[H] 分頁。
 資料在載入頁面與按「重新載入資料」時從 Supabase 重新查詢（不快取）；篩選只在瀏覽器端重新整理資料，不重新查詢。
 */
@@ -14,12 +14,15 @@ import { SummaryCards } from "./components/SummaryCards";
 import { NextTab, TableTab } from "./components/TableTabs";
 import { Tabs, type TabItem } from "./components/Tabs";
 import { RainTab, TemperatureTab } from "./components/Trends";
+import { UpdateNotices } from "./components/UpdateNotices";
+import { useUpdateFlow } from "./hooks/useUpdateFlow";
 import { formatLastUpdate, formatRange } from "./lib/formatting";
 import { ForecastQuery, type StatusRow } from "./lib/repository";
 import { addRegion, withAvg, type CityRow, type Scope } from "./lib/scope";
 import { summaryCards } from "./lib/summary";
 import { supabase } from "./lib/supabase";
 import { formatMDHM } from "./lib/time";
+import { MIN_INTERVAL_MINUTES } from "./lib/updateGate";
 import { scopeFromSearch, searchFromScope } from "./lib/urlState";
 
 interface Loaded {
@@ -57,6 +60,8 @@ export default function App() {
   }, [query]);
 
   useEffect(reload, [reload]);
+  const update = useUpdateFlow(reload);
+  const updating = update.dispatching || update.refreshAt !== null;
 
   const changeScope = (next: Scope) => {
     setScope(next);
@@ -65,15 +70,19 @@ export default function App() {
 
   return (
     <main className="page">
-      {/* [A] 標題、[B] 按鈕 */}
+      {/* [A] 標題與按鈕 */}
       <header className="page-header">
         <h1>🌤️ 台灣天氣預報</h1>
         <div className="header-actions">
-          <button type="button" onClick={reload} disabled={!query || reloading}>
+          <button type="button" onClick={update.trigger} disabled={updating || !update.status?.allowed}>
+            {updating ? "⏳ 更新中…" : "🔄 立即更新"}
+          </button>
+          <button type="button" onClick={update.reloadAll} disabled={!query || reloading}>
             {reloading ? "⏳ 載入中…" : "♻️ 重新載入資料"}
           </button>
         </div>
       </header>
+      <UpdateNotices flow={update} />{/* [B] */}
 
       {!query ? (
         <Notice kind="error">尚未設定 VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY（見 web/.env.example）</Notice>
@@ -98,6 +107,7 @@ function Dashboard({ loaded, scope, onScopeChange, query }: {
   const statusLine = status && (
     <p className="caption">
       最近排程更新 {formatLastUpdate(status, "schedule")}　｜　最近手動更新 {formatLastUpdate(status, "manual")}
+      {`　｜　手動更新需間隔 ${MIN_INTERVAL_MINUTES} 分鐘`}
     </p>
   );
 
@@ -125,7 +135,7 @@ function Dashboard({ loaded, scope, onScopeChange, query }: {
         </p>
         {!(start <= now && now < end) && (
           <Notice kind="warning">
-            目前沒有涵蓋此刻的預報時段，顯示的是最接近的時段。資料可能已過期，請等待下次排程更新（每 3 小時一次）。
+            目前沒有涵蓋此刻的預報時段，顯示的是最接近的時段。資料可能已過期，可按「立即更新」。
           </Notice>
         )}
         <SummaryCards cards={summaryCards(cur, scope)} />{/* [F] */}

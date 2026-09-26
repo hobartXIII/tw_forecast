@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 /** 整頁煙霧測試：真的渲染 App，資料庫換成假的、時間固定（對應 tests/frontend/test_app_smoke.py）。
 圖表元件換成只記錄規格的假元件（jsdom 不能真的畫 Vega）。 */
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { forecastRows, tw } from "./fakes";
@@ -11,6 +11,13 @@ const STATUS = [
   { trigger_type: "schedule", last_success_at: "2026-09-21T09:30:00+08:00", last_run_at: null },
   { trigger_type: "manual", last_success_at: "2026-09-21T08:00:00+08:00", last_run_at: null },
 ];
+
+/** 假的 /api/update-status 與 /api/dispatch：api.status 為下一次查詢的回應，api.dispatch 為觸發的回應。 */
+const api = vi.hoisted(() => ({ status: {} as Record<string, unknown>, dispatch: {} as Record<string, unknown>, calls: [] as string[] }));
+const allowed = (extra: Record<string, unknown> = {}) => ({
+  allowed: true, message: "", waitSeconds: null, elapsedMinutes: null, inProgress: false,
+  lastSuccess: "2026-09-21T09:30:00+08:00", checkedAt: NOW.toISOString(), ...extra,
+});
 
 const db = vi.hoisted(() => ({ tables: {} as Record<string, Record<string, unknown>[]>, errors: {} as Record<string, string> }));
 vi.mock("../src/lib/supabase", async () => {
@@ -34,12 +41,21 @@ beforeEach(() => {
   db.tables = { weather_forecasts: forecastRows(tw(2026, 9, 20, 6), 4), pipeline_status: STATUS };
   db.errors = {};
   window.history.replaceState(null, "", "/");
+  api.status = allowed();
+  api.dispatch = { ok: true, message: "", status: allowed({ allowed: false, inProgress: true }) };
+  api.calls = [];
+  vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+    api.calls.push(`${init?.method ?? "GET"} ${url}`);
+    const body = url === "/api/dispatch" ? api.dispatch : api.status;
+    return new Response(JSON.stringify(body), { headers: { "content-type": "application/json" } });
+  }));
   window.matchMedia = vi.fn().mockReturnValue({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() });
 });
 
 afterEach(() => {
   cleanup();
   vi.useRealTimers();
+  vi.unstubAllGlobals();
 });
 
 const tabLabels = () => screen.getAllByRole("tab").map((t) => t.textContent);
@@ -161,5 +177,83 @@ describe("App", () => {
     db.tables = { weather_forecasts: [], pipeline_status: STATUS };
     fireEvent.click(screen.getByRole("button", { name: "♻️ 重新載入資料" }));
     expect(await screen.findByText(/資料庫目前沒有預報資料/)).toBeTruthy();
+  });
+});
+
+describe("立即更新", () => {
+  const updateButton = () => screen.getByRole("button", { name: /立即更新|更新中/ }) as HTMLButtonElement;
+
+  it("可更新時按鈕可按；狀態列顯示間隔規則", async () => {
+    render(<App />);
+    await waitFor(() => expect(updateButton().disabled).toBe(false));
+    expect(screen.getByText(/手動更新需間隔 20 分鐘/)).toBeTruthy();
+  });
+
+  it("不可更新時按鈕停用並顯示原因", async () => {
+    api.status = allowed({ allowed: false, inProgress: true, message: "已觸發更新，正在等待完成" });
+    render(<App />);
+    expect(await screen.findByText("已觸發更新，正在等待完成")).toBeTruthy();
+    expect(updateButton().disabled).toBe(true);
+  });
+
+  it("讀不到更新狀態（例如本機沒有 api/）時不放行", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("<html>", { headers: { "content-type": "text/html" } })));
+    render(<App />);
+    expect(await screen.findByText(/無法取得更新狀態/)).toBeTruthy();
+    expect(updateButton().disabled).toBe(true);
+  });
+
+  it("間隔倒數：兩個數字同步，時間到自動再查一次", async () => {
+    vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout", "setInterval", "clearInterval"] });
+    vi.setSystemTime(NOW);
+    api.status = allowed({ allowed: false, waitSeconds: 14 * 60 + 30, elapsedMinutes: 5, message: "間隔不足" });
+    render(<App />);
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    expect(screen.getByText(/距上次更新僅/).textContent).toBe("距上次更新僅 5 分鐘，需間隔 20 分鐘，還需 14:30 才可更新");
+    await act(async () => { await vi.advanceTimersByTimeAsync(31_000); });
+    expect(screen.getByText(/距上次更新僅/).textContent).toContain("6 分鐘，需間隔 20 分鐘，還需 13:59");
+    api.status = allowed();
+    const before = api.calls.length;
+    await act(async () => { await vi.advanceTimersByTimeAsync(14 * 60_000); });
+    expect(api.calls.length).toBe(before + 1);
+    expect(screen.queryByText(/距上次更新僅/)).toBeNull();
+    expect(updateButton().disabled).toBe(false);
+  });
+
+  it("觸發成功：按鈕改為更新中並倒數，60 秒後重新載入並確認已完成", async () => {
+    vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout", "setInterval", "clearInterval"] });
+    vi.setSystemTime(NOW);
+    render(<App />);
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    fireEvent.click(updateButton());
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    expect(api.calls).toContain("POST /api/dispatch");
+    expect(updateButton().textContent).toBe("⏳ 更新中…");
+    expect(updateButton().disabled).toBe(true);
+    expect(screen.getByText(/已觸發更新，60 秒後自動重新載入資料/)).toBeTruthy();
+    api.status = allowed({ allowed: false, lastSuccess: new Date(NOW.getTime() + 50_000).toISOString() });
+    await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
+    expect(screen.getByText("資料已更新完成")).toBeTruthy();
+    expect(updateButton().textContent).toBe("🔄 立即更新");
+  });
+
+  it("倒數結束時還沒有新的成功紀錄：提示尚未完成", async () => {
+    vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout", "setInterval", "clearInterval"] });
+    vi.setSystemTime(NOW);
+    render(<App />);
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    fireEvent.click(updateButton());
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); }); // 讓觸發的回應先回來、排好 60 秒的計時
+    api.status = allowed({ allowed: false, inProgress: true, message: "已觸發更新，正在等待完成" });
+    await act(async () => { await vi.advanceTimersByTimeAsync(61_000); });
+    expect(screen.getByText("更新尚未完成，請稍後按「重新載入資料」")).toBeTruthy();
+  });
+
+  it("伺服器拒絕觸發：顯示原因", async () => {
+    api.dispatch = { ok: false, message: "觸發失敗（HTTP 403）", status: allowed({ allowed: false }) };
+    render(<App />);
+    await waitFor(() => expect(updateButton().disabled).toBe(false));
+    fireEvent.click(updateButton());
+    expect(await screen.findByText("觸發失敗（HTTP 403）")).toBeTruthy();
   });
 });

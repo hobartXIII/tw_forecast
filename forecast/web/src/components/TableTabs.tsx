@@ -32,7 +32,7 @@ export function NextTab({ scope, fc, after }: { scope: Scope; fc: ScopedRow[] | 
       {later.length ? (
         <ForecastTable rows={makeTable(later, true)} drop={scope.tableDropColumns()} />
       ) : (
-        <Notice kind="info">沒有後續時段的預報資料（資料可能已過期），請等待下次排程更新（每 3 小時一次）。</Notice>
+        <Notice kind="info">沒有後續時段的預報資料（資料可能已過期），請按「立即更新」。</Notice>
       )}
     </>
   );

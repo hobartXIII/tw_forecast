@@ -14,7 +14,7 @@ const NARROW_LEGEND_COLUMNS = 3;
 /** 地區／全台的指標選項。 */
 const TEMP_METRICS: Record<string, SeriesColumn> = { 最高溫: "max_temp", 最低溫: "min_temp", 平均溫: "avg" };
 
-export const STALE_FORECAST = "沒有未來預報資料（資料可能已過期），請等待下次排程更新（每 3 小時一次）。";
+export const STALE_FORECAST = "沒有未來預報資料（資料可能已過期），請按「立即更新」。";
 
 export function TemperatureTab({ scope, fc, now }: { scope: Scope; fc: ScopedRow[] | null; now: Date }) {
   const dark = useDarkMode();

@@ -4,7 +4,7 @@
 目前的前端架構見 [ARCHITECTURE.md](ARCHITECTURE.md)，需求與規格見 [SPECIFICATION.md](SPECIFICATION.md)。
 
 - **建立日期**：2026-09-25
-- **狀態**：階段 0 完成（2026-09-25 Vercel 部署成功並讀到資料庫）；階段 1 完成（資料層與純函式移植）；階段 2 完成（唯讀畫面）；階段 3 完成（地圖）；階段 4 完成（視覺細修，Vitest 132 項）；下一步階段 5（立即更新）
+- **狀態**：階段 0 完成（2026-09-25 Vercel 部署成功並讀到資料庫）；階段 1 完成（資料層與純函式移植）；階段 2 完成（唯讀畫面）；階段 3 完成（地圖）；階段 4 完成（視覺細修，Vitest 132 項）；階段 5（立即更新）程式完成、待 Vercel 實測
 
 ## 1. 已確定的決定
 
@@ -41,14 +41,14 @@ forecast/
 
 - **Vercel 專案設定**：Root Directory 設為 `forecast/web`，Framework Preset 選 Vite。
 - **只在前端有變動時建置**：Ignored Build Step 設為 `git diff --quiet HEAD^ HEAD -- .`，只改後端或文件時不會觸發建置。
-- **本機開發**：`npm run dev` 只跑頁面；要測 `api/` 用 Vercel CLI 的 `vercel dev`。
+- **本機開發**：`npm run dev` 同時提供頁面與 `api/`（`vite.config.ts` 的 `localApi` 外掛，讀 `.env.local`）；本機沒填 `GH_DISPATCH_TOKEN` 時「立即更新」顯示「尚未設定」並停用。
 
 ### 環境變數
 
 | 變數 | 位置 | 用途 |
 | :--- | :--- | :--- |
 | `VITE_SUPABASE_URL`、`VITE_SUPABASE_ANON_KEY` | 瀏覽器（`VITE_` 前綴會打包進前端） | 唯讀查詢與告警設定 RPC；安全由 RLS 控制 |
-| `SUPABASE_URL`、`SUPABASE_ANON_KEY` | 只在 Function | `api/` 讀 `pipeline_status` 判斷間隔 |
+| `SUPABASE_URL`、`SUPABASE_ANON_KEY` | 只在 Function | `api/` 讀 `pipeline_status` 判斷間隔；沒設定時沿用 `VITE_SUPABASE_URL`、`VITE_SUPABASE_ANON_KEY`（同一組 anon 值） |
 | `GH_REPO`、`GH_DISPATCH_TOKEN` | 只在 Function（**不可**加 `VITE_` 前綴） | 查 workflow runs 與觸發 `workflow_dispatch`；token 需要此 repo 的 `Actions: Read and write` |
 
 `service_role` 金鑰不放進 Vercel。
@@ -126,7 +126,7 @@ forecast/
 | 2 唯讀畫面 | ✅ 完成 | `9eaced8` |
 | 3 地圖 | ✅ 完成 | `d0ca351` |
 | 4 視覺細修 | ✅ 完成 | 見 git log |
-| **5 立即更新** | **⏭️ 進行中** | — |
+| **5 立即更新** | **程式完成，待 Vercel 設定環境變數後實測** | — |
 | 6 告警設定 | 未開始 | — |
 | 7 文件與切換 | 未開始 | — |
 
@@ -138,9 +138,16 @@ forecast/
 - 手機：圖例每列最多 3 項（`seriesChartSpec` 的 `legendColumns`）；捲動或滑動時收起 Vega 提示框（`lib/tooltipAutoHide.ts`）
 - 手機版的「☰ 選單」等到階段 5 標題列有多顆按鈕時再加
 
+### 階段 5 立即更新（程式完成，待實測）
+
+- 伺服器端邏輯在 `web/src/server/updateService.ts`（`getUpdateStatus`、`dispatchUpdate`、`maskSecrets`），`api/update-status.ts`（GET）、`api/dispatch.ts`（POST）只負責串接；`api/` 以 Node ESM 執行，相對匯入寫 `.js` 副檔名
+- 瀏覽器端：`lib/updateApi.ts`（呼叫 api/，失敗一律不放行）、`hooks/useUpdateFlow.ts`（流程狀態）、`components/UpdateNotices.tsx`（提示與倒數）
+- 過期提示的文字已改回「請按『立即更新』」
+- 手機版標題列目前是兩顆按鈕並排；階段 6 加入「⚙️ 告警設定」後再決定是否改成「☰ 選單」
+- **實測步驟**：Vercel → Settings → Environment Variables 加 `GH_REPO`（`hobartXIII/tw_forecast`）、`GH_DISPATCH_TOKEN`（不可加 `VITE_` 前綴）→ push `main` 觸發部署 → 按一次「立即更新」，確認：按鈕變「更新中…」並倒數 60 秒、另一個分頁／F5 後按鈕仍停用（GitHub 上有未完成的手動 run）、完成後顯示「資料已更新完成」與 20 分鐘間隔倒數
+
 ### 之後的待辦
 
-- 階段 5「立即更新」：`api/update-status.ts`、`api/dispatch.ts`（見 §3），Vercel 需加 `SUPABASE_URL`、`SUPABASE_ANON_KEY`、`GH_REPO`、`GH_DISPATCH_TOKEN`（不可加 `VITE_` 前綴）；資料過期提示的文字（目前寫「請等待下次排程更新」）屆時改回「請按『立即更新』」
 - 階段 6 告警設定：先決定密碼保存方式（§6）
 - 使用者待辦：
   - Streamlit Cloud 的 Secrets 可刪除 `GH_REPO`、`GH_DISPATCH_TOKEN`（token 本身保留，Vercel 版要用）
