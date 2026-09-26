@@ -122,6 +122,7 @@ function Dashboard({ loaded, scope, onScopeChange, query }: {
 }) {
   const { now, status, current, forecast } = loaded;
   const cur = useMemo(() => withAvg(scope.filterCurrent(current)), [scope, current]);
+  const [infoOpen, setInfoOpen] = useState(false); // 手機版更新資訊是否展開（電腦版永遠展開）
   const fc = useMemo(() => scope.filterForecast(forecast), [scope, forecast]);
 
   // [C] 最近更新時間：左欄較窄，每項一行（讀不到 pipeline_status 時不顯示）
@@ -160,13 +161,23 @@ function Dashboard({ loaded, scope, onScopeChange, query }: {
         )}
         <div className="overview">
           <div className="overview-side">
-            {/* [C] 最近更新時間 + [E] 預報時段與資料更新時間，放在地區下拉選單上方 */}
-            <ul className="info-lines">
-              {statusItems}
-              <li>預報時段 <b>{formatRange(start, end)}</b></li>
-              <li>資料更新 <b>{formatMDHM(updated)}</b></li>
-              <li>時間皆為台灣時間</li>
-            </ul>
+            {/* [C] 最近更新時間 + [E] 預報時段與資料更新時間，放在地區下拉選單上方。
+                手機版收合成一條按鈕（顯示資料更新時間），點一下展開；電腦版沒有按鈕、永遠展開（CSS 控制） */}
+            <div className="info-box">
+              <button
+                type="button" className="info-toggle" aria-expanded={infoOpen} aria-controls="info-lines"
+                onClick={() => setInfoOpen(!infoOpen)}
+              >
+                <span>🕒 資料更新 {formatMDHM(updated)}</span>
+                <span className="info-caret" aria-hidden="true">▾</span>
+              </button>
+              <ul id="info-lines" className={`info-lines${infoOpen ? " open" : ""}`}>
+                {statusItems}
+                <li>預報時段 <b>{formatRange(start, end)}</b></li>
+                <li>資料更新 <b>{formatMDHM(updated)}</b></li>
+                <li>時間皆為台灣時間</li>
+              </ul>
+            </div>
             {filters}
             <SummaryCards key={scope.label} title={summaryTitle(scope)} cards={summaryCards(cur, scope)} />{/* [F] 換範圍時回到第一張 */}
           </div>

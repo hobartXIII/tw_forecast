@@ -55,7 +55,7 @@
 - 前端為 **React + TypeScript**（Vite，部署於 Vercel）。背景特效 `ParticleBackground` 是框架無關的類別，由 `main.tsx` 掛載一次，不包成 React 元件。
 - 背景視覺效果（漸層 + 流場粒子）已完成第一版，詳細說明見 @forecast/docs/background-effects.md
 - 粒子**只在深色主題播放**（`forecast/web/src/background/darkOnly.ts`）；淺色主題停止並隱藏畫布。
-- **淺色主題**改為背景（底色漸層＋三個光暈）由左往右水平流動：純 CSS，`global.css` 的 `:root[data-theme="light"] body::before`，只動 `transform`；速度由 `--bg-flow-duration` 控制（60s 一個週期 = 每 30 秒移一個畫面寬）。
+- **淺色主題**改為背景（底色漸層＋三個光暈）由左往右水平流動：純 CSS，`global.css` 的 `:root[data-theme="light"] body::before`，只動 `transform`；速度由 `--bg-flow-duration` 控制（60s 一個週期 = 每 30 秒移一個畫面寬；手機改 24s，光暈也加濃）。
 
 ## 背景效果的必守規則
 - 顏色一律放在 CSS 變數，沿用本專案的 `data-theme` 寫法（粒子顏色 `--p-1～3` 在 `global.css` 的 `:root[data-theme="dark"]`），**不要**在 TS 裡寫死色碼。

@@ -201,8 +201,8 @@ button:disabled { opacity: 0.55; cursor: not-allowed; }
   list-style: none; margin: 0; padding: 0; color: var(--text); font-size: 1rem; line-height: 1.4; /* 與提示框同字級；全部用主文字色（深色模式為近白） */
   display: flex; flex-direction: column; gap: var(--info-line-gap, 6px); /* 行距由 .overview-side 的 --info-line-gap 設定 */
 }
-/* 左欄的更新資訊包在玻璃框裡（與摘要卡片、地圖面板同一組玻璃變數） */
-.overview .info-lines {
+/* 左欄的更新資訊包在玻璃框裡（與摘要卡片、地圖面板同一組玻璃變數）；框裡是手機版的展開按鈕與清單 */
+.overview .info-box {
   background: var(--glass-bg);
   border: 1px solid var(--glass-border);
   border-radius: 16px;
@@ -212,6 +212,7 @@ button:disabled { opacity: 0.55; cursor: not-allowed; }
   backdrop-filter: blur(var(--glass-blur)) saturate(140%);
 }
 .info-lines b { font-weight: 400; white-space: nowrap; } /* 不用粗體；時間不拆開，放不下時整段換到下一行 */
+.info-toggle { display: none; } /* 手機版才顯示（見檔尾） */
 
 /* ---- 提示框 ---- */
 .notice { padding: 12px 16px; border-radius: 8px; margin: 10px 0; }
@@ -510,5 +511,23 @@ option { background: var(--surface); color: var(--text); } /* 展開的選項清
   .filters { grid-template-columns: 1fr; gap: 8px; }
   .overview { grid-template-columns: 1fr; }
   .overview-side { --carousel-height: 150px; }
+  /* 更新資訊收合成一條按鈕（顯示資料更新時間），點一下展開完整清單 */
+  .info-toggle {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%;
+    padding: 0; border: none; background: none; box-shadow: none; color: var(--text); text-align: left;
+    -webkit-backdrop-filter: none; backdrop-filter: none;
+  }
+  .info-caret { transition: transform 0.2s ease; }
+  .info-toggle[aria-expanded="true"] .info-caret { transform: rotate(180deg); }
+  .info-lines { display: none; margin-top: 12px; }
+  .info-lines.open { display: flex; }
+  /* 淺色主題的水平流動：手機畫面窄，同樣「每 30 秒一個畫面寬」換算成像素太慢，
+     改成約 12 秒一個畫面寬（一個週期 24 秒），光暈濃度提高約 1.6 倍，流動才看得出來 */
+  :root[data-theme="light"] {
+    --bg-flow-duration: 24s;
+    --glow-1: rgba(255, 160, 90, 0.35);
+    --glow-2: rgba(80, 170, 235, 0.32);
+    --glow-3: rgba(160, 130, 255, 0.22);
+  }
   .panel { padding: 12px 14px; border-radius: 16px; }
 }

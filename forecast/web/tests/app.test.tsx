@@ -499,6 +499,20 @@ describe("摘要輪播", () => {
     expect(info.compareDocumentPosition(region) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
+  it("手機版更新資訊：按鈕顯示資料更新時間，點一下展開、再點收合（預設收合）", async () => {
+    render(<App />);
+    await screen.findAllByRole("tab");
+    const toggle = screen.getByRole("button", { name: /資料更新 09\/21 09:30/ });
+    const list = document.getElementById("info-lines")!;
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(list.classList.contains("open")).toBe(false);
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    expect(list.classList.contains("open")).toBe(true);
+    fireEvent.click(toggle);
+    expect(list.classList.contains("open")).toBe(false);
+  });
+
   it("箭頭與圓點在輪播方塊內", async () => {
     render(<App />);
     await screen.findAllByRole("tab");

@@ -113,3 +113,4 @@ bg.running;                  // 是否正在播放
 - **毛玻璃**：本專案的卡片與面板仍保留 `backdrop-filter`（交接包是關閉的）。2026-09-27 在桌機（Edge、1280px、深色）量測，開啟粒子前後頁面都維持約 144 fps；中低階手機仍需實測，若卡頓，先調低 `--glass-blur`。
 - **這台開發電腦**關閉了 Windows「動畫效果」，瀏覽器回報 `prefers-reduced-motion: reduce`，所以只會看到靜態的一幀（預期行為，正式環境維持 `respectReducedMotion: true`）。
 - **淺色主題**不播粒子，改用純 CSS 的水平流動：`body::before` 加寬成 400vw、圖樣以 200vw 為週期重複，`translateX(-50% → 0)` 無限循環（`--bg-flow-duration`，預設 60s = 每 30 秒移一個畫面寬），只動 `transform`；減少動態效果時靜止。
+- **手機（≤ 640px）**：同樣「每 30 秒一個畫面寬」換算成像素太慢，改為 `--bg-flow-duration: 24s`（約 12 秒一個畫面寬），`--glow-1～3` 的濃度提高約 1.6 倍。
