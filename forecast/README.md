@@ -67,7 +67,7 @@
 | 前端 | Vite + React + TypeScript、Vega-Lite（趨勢圖）、Leaflet（地圖） | 地圖、圖表、篩選都在瀏覽器執行，不需要常駐伺服器；圖表沿用 Streamlit 版 Altair 的 Vega-Lite 定義 |
 | 前端部署 | Vercel（Hobby） | 免費，push 到 `main` 自動部署；靜態頁走 CDN、不會休眠；「立即更新」用 Vercel Functions |
 | 前端（第一版） | Streamlit + Folium + Altair（`streamlit` 分支，Community Cloud） | 全部用 Python 開發，延續課程內容；改寫後保留作為備用與對照 |
-| 推播 | Telegram Bot | 原規劃 Google Chat，但個人 Gmail 帳號無法使用其 webhook／API，改用免費且設定簡單的 Telegram |
+| 推播 | Telegram Bot | 原規劃 Google Chat，但個人 Gmail 帳號無法使用其 webhook／API；也評估過 LINE，但 LINE Notify 已於 2025-03-31 停止服務，改用 Messaging API 必須申請 LINE 官方帳號，不適合個人通知用途；最後選用免費且設定簡單的 Telegram |
 
 ### 2.3 資料來源與用量規劃
 
@@ -150,7 +150,7 @@
 
 | 問題 | 原因 | 解決方式 |
 | :--- | :--- | :--- |
-| 無法用 Google Chat 推播 | 個人 Gmail 帳號不能使用 Google Chat webhook／API | 改用 Telegram Bot |
+| 無法用 Google Chat、LINE 推播 | Google Chat：個人 Gmail 帳號不能使用 webhook／API；LINE：LINE Notify 已於 2025-03-31 停止服務，改用 Messaging API 必須申請 LINE 官方帳號，對只推給自己的個人通知來說門檻過高 | 改用 Telegram Bot（向 @BotFather 申請即可取得 token，免費、不需官方帳號） |
 | 儀表板出現 44 個縣市（應為 22） | 氣象署第一個時段會隨時間縮短，新舊兩批時段重疊 | 加入 `updated_at`，前端只取最新一批資料 |
 | 時間顯示成 UTC | 資料庫預設時區為 UTC | 資料庫時區設為 `Asia/Taipei` |
 | 手機上滑動頁面時誤觸地圖 | 單指滑動被地圖攔截 | 地圖改成兩指操作，單指用來捲動頁面 |

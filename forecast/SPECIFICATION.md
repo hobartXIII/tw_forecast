@@ -801,7 +801,7 @@ HW1/                                     # repo 根目錄
 | 里程碑 | 狀態 | 備註 |
 | :---: | :---: | :--- |
 | M0 | ✅ 完成 | repo：`hobartXIII/tw_forecast`，根目錄 `HW1/` |
-| M1 | ✅ 完成 | CWA、Supabase 金鑰已備妥；推播管道由 Google Chat 改為 **Telegram**（個人 Gmail 無法使用 Google Chat webhook 與 API，官方文件要求 Business/Enterprise Workspace）。`TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` 已設定於本機 `.env` 與 GitHub Secrets（Secrets 為使用者回報，尚未經實際排程推播驗證） |
+| M1 | ✅ 完成 | CWA、Supabase 金鑰已備妥；推播管道由 Google Chat 改為 **Telegram**（個人 Gmail 無法使用 Google Chat webhook 與 API，官方文件要求 Business/Enterprise Workspace；也評估過 LINE，但 LINE Notify 已於 2025-03-31 停止服務，Messaging API 須申請 LINE 官方帳號，不適合個人通知）。`TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` 已設定於本機 `.env` 與 GitHub Secrets（Secrets 為使用者回報，尚未經實際排程推播驗證） |
 | M2 | ✅ 完成 | 資料表與函式皆已建立並驗證：`weather_forecasts`（含 `updated_at`、觸發器、`Asia/Taipei` 時區）、`pipeline_status`、`alert_city_settings`、`alert_slot_settings`（`anon` 完全讀不到也寫不了）、`private.admin_credential`（bcrypt 雜湊）與三個驗證／存取函式。`check_rls.py` 13 項全數通過（含兩張告警設定表）；`check_admin_rpc.py` 以真實密碼完整通過：錯誤密碼、空值、NULL、SQL 注入字串皆被拒絕且延遲約 1 秒，正確密碼可讀取與儲存，不合法門檻被資料庫拒絕，不能新增縣市，測試前後設定完全相同。**`init_supabase.sql` 內 `verify_admin` 已改為「無法確定就拒絕」（`IS DISTINCT FROM`）的加強版，並已由使用者在 Supabase 重新執行** |
 | M3 | ✅ 完成 | Telegram 推播已實測（手機收到範例訊息）。告警設定化（第 1 階段）已完成：縣市為主鍵、降雨／低溫／高溫各自的開關與門檻、可選發送時段（08:45／14:45／20:45）、W1 判斷視窗、預設全部縣市關閉、讀不到設定就不發送；單元與流程測試通過，並用真實資料模擬過。設定表已在 Supabase 建立，2026-09-20 23:52 的排程已用新版程式成功執行（該時槽不是發送時段，未發送）。**2026-09-21 08:45 的發送時段已實際收到由排程推播的告警（使用者確認）**，整條流程（排程觸發 → 讀取資料庫設定 → 條件判斷 → Telegram 推播）驗證正常。測試用設定由使用者自行還原 |
 | M4 | ✅ 完成 | 手動觸發與自動排程皆已實際成功：`cron`（台灣時間 02:45 起每 3 小時）已觀察到兩次自動觸發——2026-09-20 20:55（較時槽 20:45 延遲約 10 分鐘）與 23:52（較時槽 23:45 延遲約 7 分鐘），皆成功寫入預報並更新 `pipeline_status` 的 `schedule` 列（最後為 23:53）。**使用者確認昨日到今日（2026-09-21 前後）的排程皆穩定取得資料**，後續時槽也持續自動觸發 |
