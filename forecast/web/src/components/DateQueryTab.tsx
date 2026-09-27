@@ -54,10 +54,12 @@ export function DateQueryTab({ scope, query, now }: { scope: Scope; query: Forec
     <>
       <label className="field">
         <span>日期（今天前 3 天到後 7 天內、資料庫有資料的日期）</span>
-        <select value={picked} onChange={(e) => setPicked(e.target.value)}>
-          <option value="" disabled>請選擇日期</option>
-          {dates.dates.map((d) => <option key={d} value={d}>{dateLabel(d, today)}</option>)}
-        </select>
+        <span className="select-wrap">
+          <select value={picked} onChange={(e) => setPicked(e.target.value)}>
+            <option value="" disabled>請選擇日期</option>
+            {dates.dates.map((d) => <option key={d} value={d}>{dateLabel(d, today)}</option>)}
+          </select>
+        </span>
       </label>
       {day.kind === "loading" && <p className="caption">讀取中…</p>}
       {day.kind === "error" && <Notice kind="error">{day.message}</Notice>}

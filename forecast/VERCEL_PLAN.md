@@ -20,6 +20,8 @@
 
 ## 2. 目錄與部署
 
+> 以下是規劃時的結構；實際完成的目錄見 [ARCHITECTURE.md](ARCHITECTURE.md) §2、§4（沒有使用 CSS Modules，整頁測試改在 Vitest 的 jsdom 裡執行，`streamlit_app/` 已於階段 7 刪除）。
+
 ```text
 forecast/
 ├── src/tw_forecast/      後端與 Streamlit 版前端（Python，不動）
@@ -75,6 +77,8 @@ forecast/
 - **失敗時不放行**：讀不到 `pipeline_status` 或 GitHub API 失敗時一律不放行，並顯示原因（遮蔽 token）。
 
 ## 4. 技術選擇
+
+> 規劃時的選擇；實際改為直接使用 `vega-embed` 與 `leaflet`（沒有用 `react-vega`、`react-leaflet`），樣式只有一份 `global.css`，整頁測試用 Vitest + jsdom（沒有用 Playwright）。
 
 | 功能 | 使用 | 對應現在的 Python |
 | :--- | :--- | :--- |
@@ -163,7 +167,7 @@ forecast/
 
 ### 之後的待辦
 
-- README 的截圖（`assets/screenshots/`）仍是 Streamlit 版，視需要重新產生；部署網址 QR code 已新增 Vercel 版（`assets/deploy_qrcode_vercel.png`，以 `segno` 產生），Streamlit 版的保留
+- README 的截圖（`assets/screenshots/`）已於 2026-09-27 重拍為 Vercel 版；部署網址 QR code 已新增 Vercel 版（`assets/deploy_qrcode_vercel.png`，以 `segno` 產生），Streamlit 版的保留
 - 使用者待辦：
   - Streamlit Cloud 的 Secrets 可刪除 `GH_REPO`、`GH_DISPATCH_TOKEN`（token 本身保留，Vercel 版要用）
   - 在 Streamlit 版電腦上確認「按住 Ctrl」提示會停留約 1 秒（v1.16.1）
@@ -180,7 +184,7 @@ npm test                        # Vitest（不連網、不連資料庫）
 npm run build                   # 型別檢查 → 測試 → 打包（Vercel 建置時也跑這個）
 ```
 
-後端的 Python 測試照舊（Streamlit 版的測試在 `streamlit` 分支）：依 README 建 `.venv`，`pip install -r requirements.txt -r requirements-dev.txt`（兩個檔案都在 repo 根目錄），再到 `forecast/` 執行 `python -m pytest`。
+後端的 Python 測試照舊（Streamlit 版的測試在 `streamlit` 分支）：依 `SPECIFICATION.md` §11.1 建 `.venv`，`pip install -r requirements.txt -r requirements-dev.txt`（兩個檔案都在 repo 根目錄），再到 `forecast/` 執行 `python -m pytest`。
 
 ### 注意事項
 
@@ -189,3 +193,37 @@ npm run build                   # 型別檢查 → 測試 → 打包（Vercel �
 - Vercel 環境變數一律選 **Config**：選 Secret 的變數在 Function 執行時讀不到（2026-09-26 `GH_DISPATCH_TOKEN` 設成 Secret 時 `/api/update-status` 一直回「尚未設定」，改成 Config 並 Redeploy 後正常）。token 雖是 Config，只有 `api/` 讀取且訊息會遮蔽；不可取 `VITE_` 開頭的名稱
 - Vercel 的環境變數改了之後要 Redeploy 才生效（`VITE_` 變數是建置時打包進去的）；值不要加引號、貼上前把輸入法切成英文。
 - 本機用 `npx vite` 起的開發伺服器，停止時要確認 5173 埠已釋放（背景工作被停止時子行程可能還在）。
+
+---
+
+## 附錄：改寫前的評估
+
+### Streamlit Community Cloud 與 Vercel 完整比較（改寫前）
+
+| 面向 | Streamlit Community Cloud（改寫前） | Vercel |
+| :--- | :--- | :--- |
+| 開發語言 | 全部 Python，可沿用 pandas、Altair、folium 與現有測試 | 前端需改寫成 JavaScript／TypeScript（例如 Next.js）；Streamlit 需要常駐的 WebSocket 伺服器，無法部署在 Vercel |
+| 開發速度 | 視熟悉度而定：熟 Python 的人上手快，元件現成，不用寫 API 與前端狀態管理；但它特有的「每次互動整支腳本重跑」、`session_state`、快取機制較少人熟悉，資源也較少 | 視熟悉度而定：HTML／React／TypeScript 是主流技能，資料與範例多，熟前端的人反而較快；但要自己處理版面、狀態、API 路由 |
+| 首次載入 | 一段時間沒有流量會休眠，下一位訪客要等喚醒；每個連線都要建立 WebSocket | 靜態頁面走全球 CDN，載入快，沒有休眠問題 |
+| 互動模型 | 每次互動整支腳本重跑，靠 `st.cache_*`、`st.fragment` 優化 | 只更新變動的元件，瀏覽器端互動不需回伺服器 |
+| 版面與樣式 | 受限於內建元件；玻璃擬態、頁籤等效果依賴 Streamlit 內部 CSS 選擇器，升級版本可能失效 | 完全自訂，手機版與深色主題可精細控制 |
+| 快取 | 伺服器記憶體快取，app 重啟或休眠就清空 | 可用 ISR（定時重建頁面），很適合「每 3 小時才更新一次」的資料 |
+| 部署流程 | push 到 `main` 自動部署；無預覽環境 | push 自動部署，另外每個 PR 都有預覽網址 |
+| 網域 | 只能用 `*.streamlit.app` | 可綁定自訂網域 |
+| 資源限制 | 每個 app 約 2.7 GB 記憶體；私有 app 限 1 個 | Serverless Function 有執行時間與次數限制；免費 Hobby 方案僅限非商業使用 |
+| 伺服器狀態 | 有常駐行程，`DispatchLog`、登入狀態可放記憶體 | Function 不保留狀態，這類狀態必須移到資料庫或 cookie |
+| 維護成本 | 一種語言、一套測試 | Python（後端）與 TypeScript（前端）兩套語言、兩套測試 |
+
+### 當初的改寫建議（未全數採用）
+
+> 實際採用的方案見本文件 §1～§6：框架改用 Vite + React（而非下面第 1 點的 Next.js），「觸發後鎖定」改查 GitHub workflow runs（而非第 3 點的資料庫欄位），告警設定的密碼留在頁面記憶體（而非第 4 點的 cookie），常數直接搬到 TypeScript（而非第 7 點的共用 JSON）。以下保留為當初的評估。
+
+1. **框架**：Next.js（App Router）＋ TypeScript，用 `@supabase/supabase-js` 讀資料。`anon` key 放在 `NEXT_PUBLIC_SUPABASE_URL`、`NEXT_PUBLIC_SUPABASE_ANON_KEY`；`GH_REPO`、`GH_DISPATCH_TOKEN` 只設成伺服器端環境變數（不加 `NEXT_PUBLIC_` 前綴）。Supabase 的 RLS 與 RPC 不用改。
+2. **資料更新**：預報頁用 ISR 定時重建。更好的做法是在 `fetch_and_store.py` 成功寫入後，呼叫 Vercel 的重新驗證 API（帶密鑰），資料一更新頁面就重建，不必等下一次定時。
+3. **「立即更新」**：改成 Route Handler 呼叫 GitHub API。20 分鐘間隔已經是依資料庫 `pipeline_status` 的最後成功時間判斷，可直接沿用。需要調整的是「觸發後 5 分鐘鎖定」：它用的觸發時間（按下按鈕到 workflow 寫入成功紀錄之間的空窗）目前只存在伺服器記憶體（`DispatchLog`），Vercel 的 Function 不保留記憶體，要改存到 Supabase（例如在 `pipeline_status` 加一個 `last_dispatched_at` 欄位，由 Route Handler 透過專用的 RPC 函式寫入，前端仍只用 `anon` key、不放 `service_role`），才能跨 Function 共用，也順便解決目前「app 重啟就清掉觸發紀錄」的問題。
+4. **「⚙️ 告警設定」**：密碼只在登入時送到 Route Handler，由伺服器呼叫 Supabase RPC 驗證；成功後發簽章過、`HttpOnly` 的短效 session cookie（15 分鐘閒置逾時），之後的讀寫都由伺服器端帶憑證呼叫 RPC，瀏覽器不保存密碼。長期可以考慮改用 Supabase Auth 取代自建密碼表。
+5. **圖表**：目前的 Altair 圖表本質上是 Vega-Lite 規格，可以用 `react-vega` 或 `vega-embed` 沿用相同的圖表定義，不必整個重畫。
+6. **地圖**：folium 底層是 Leaflet，可改用 `react-leaflet`。流量變大時，OpenStreetMap 官方圖磚伺服器不適合大量使用，建議改用正式的圖磚服務，並保留「© OpenStreetMap contributors」標示。
+7. **共用設定**：溫度級距、降雨色階、地區分組、告警預設門檻目前寫在 Python 裡。改寫時建議抽成一份 JSON，讓後端（Python）與前端（TypeScript）讀同一份，避免兩邊數值不一致。
+8. **測試**：純函式改用 Vitest 寫單元測試，畫面流程用 Playwright 取代現在的 `AppTest` 煙霧測試；後端的 `pytest` 保持不變。
+9. **遷移步驟**：先在 Vercel 上並行建置新前端，用 PR 預覽網址逐項對照功能；功能完全一致後再切換正式網址，Streamlit 版保留一段時間作為備援。

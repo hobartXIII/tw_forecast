@@ -32,9 +32,10 @@ describe("summaryCards", () => {
     expect(cards[3].meter).toBe(21);
     expect(cards[3].accent).toBe(rainColor(21));
     expect(cards[3].textColor).toBe(""); // 降雨數字不上色
+    expect(cards.map((c) => c.aside)).toEqual(["", "", "", ""]); // 多縣市沒有單一天氣
   });
 
-  it("單一縣市：該縣市的數值，平均氣溫旁顯示天氣", () => {
+  it("單一縣市：該縣市的數值，平均、最高／最低溫、溫差顯示天氣", () => {
     const cards = summaryCards(cur(), new Scope(ALL_REGIONS, "臺北市"));
     expect(cards[0].label).toBe("平均氣溫"); // 縣市名顯示在輪播最上方
     expect(cards[0].text).toBe("21.0 °C");
@@ -43,6 +44,7 @@ describe("summaryCards", () => {
     expect(cards[1].text).toBe("24 / 18 °C");
     expect(cards[1].sub).toBeUndefined(); // 單一縣市不用標縣市
     expect(cards[2].text).toBe("6 °C");
+    expect(cards.map((c) => c.aside)).toEqual(["☀️ 晴", "☀️ 晴", "☀️ 晴", ""]); // 降雨卡片已有進度條，不加天氣
   });
 
   it("沒有值時顯示「—」且不發光", () => {

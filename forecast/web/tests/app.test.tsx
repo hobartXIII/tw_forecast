@@ -454,10 +454,10 @@ describe("摘要輪播", () => {
     expect(shown()).toBe("平均氣溫");
     await act(async () => { await vi.advanceTimersByTimeAsync(4000); });
     expect(shown()).toMatch(/^最高／最低溫/);
-    fireEvent.mouseEnter(document.querySelector(".carousel")!);
+    fireEvent.pointerEnter(document.querySelector(".carousel")!, { pointerType: "mouse" });
     await act(async () => { await vi.advanceTimersByTimeAsync(12_000); });
     expect(shown()).toMatch(/^最高／最低溫/);
-    fireEvent.mouseLeave(document.querySelector(".carousel")!);
+    fireEvent.pointerLeave(document.querySelector(".carousel")!, { pointerType: "mouse" });
     await act(async () => { await vi.advanceTimersByTimeAsync(4000); });
     expect(shown()).toMatch(/^最大溫差/);
   });
@@ -479,6 +479,23 @@ describe("摘要輪播", () => {
     await flush();
     const next = screen.getByRole("button", { name: "下一張" });
     next.focus(); // 真實瀏覽器點擊後焦點留在按鈕上，但不是 :focus-visible
+    fireEvent.click(next);
+    expect(shown()).toMatch(/^最高／最低溫/);
+    await act(async () => { await vi.advanceTimersByTimeAsync(4000); });
+    expect(shown()).toMatch(/^最大溫差/);
+  });
+
+  it("手機點過箭頭後仍會自動換頁（瀏覽器補送的模擬 mouseenter 不算滑鼠移上去）", async () => {
+    useTimers();
+    render(<App />);
+    await flush();
+    const carousel = document.querySelector(".carousel")!;
+    const next = screen.getByRole("button", { name: "下一張" });
+    // 真實手機點一下的事件順序：touchstart → pointerenter(touch) → touchend → 模擬的 mouseenter／click（沒有 mouseleave）
+    fireEvent.touchStart(next, { touches: [{ clientX: 100, clientY: 100 }] });
+    fireEvent.pointerEnter(carousel, { pointerType: "touch" });
+    fireEvent.touchEnd(next, { changedTouches: [{ clientX: 100, clientY: 100 }] });
+    fireEvent.mouseEnter(carousel);
     fireEvent.click(next);
     expect(shown()).toMatch(/^最高／最低溫/);
     await act(async () => { await vi.advanceTimersByTimeAsync(4000); });

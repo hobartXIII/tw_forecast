@@ -44,6 +44,7 @@
 - 三套色階各自獨立：氣溫 `lib/temperature.ts`、降雨 `lib/rain.ts`、溫差 `lib/tempRange.ts`。
 - 地圖底圖不論主題都是淺色 OpenStreetMap；降雨環在 0% 或沒有值時不畫；被選的縣市只放大、不加外框。
 - 左欄版面的可調參數在 `global.css` 的 `.overview`、`.overview-side`（`--carousel-height` 等）。
+- 卡片、面板、按鈕、下拉為透明玻璃（不加 `backdrop-filter`）；只有地圖圖例／提示框與告警視窗背後保留模糊。
 
 ## 7. 環境注意事項（Windows）
 - 長的 bash heredoc 容易解析失敗：把腳本用 Write 寫到 scratchpad 再執行；含 emoji 的替換用 Edit，不用 `sed`。

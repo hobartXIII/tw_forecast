@@ -2,6 +2,7 @@
 
 單一縣市顯示該縣市自己的數值；其他範圍顯示平均與極值，並標出是哪個縣市：
 最高／最低溫在數值下方列出兩個縣市，溫差取「各縣市自己的高低溫差」中最大的一個。
+單一縣市時，平均氣溫、最高／最低溫、溫差三張卡片都在數值下方顯示天氣（降雨卡片已有進度條，不加）。
 卡片邊框依級距色發光：溫度卡片依氣溫級距（與地圖標記同色），降雨卡片依降雨色階並附進度條。
 */
 import { formatValue, isNight, weatherIcon } from "./formatting";
@@ -18,7 +19,7 @@ export interface CardModel {
   textColor: string;
   /** 發光邊框的顏色，空字串代表一般玻璃邊框。 */
   accent: string;
-  /** 顯示在數值右側的文字（單一縣市的天氣圖示與文字）。 */
+  /** 顯示在數值旁的文字（單一縣市的天氣圖示與文字；輪播裡放在數值下一行）。 */
   aside: string;
   /** 0～100 時畫進度條（降雨機率）；null 不畫。 */
   meter: number | null;
@@ -53,7 +54,7 @@ function rainCard(label: string, value: number | null): CardModel {
 }
 
 /** 最高／最低溫合併成一張：「29 / 25 °C」兩個數字各依級距上色，邊框依最高溫發光；cities 為 [最高溫縣市, 最低溫縣市]。 */
-function highLowCard(high: number | null, low: number | null, cities?: [string, string]): CardModel {
+function highLowCard(high: number | null, low: number | null, cities?: [string, string], aside = ""): CardModel {
   const num = (v: number | null) => (isMissing(v) ? "—" : v.toFixed(0));
   const bothMissing = isMissing(high) && isMissing(low);
   return {
@@ -61,7 +62,7 @@ function highLowCard(high: number | null, low: number | null, cities?: [string, 
     text: bothMissing ? "—" : `${num(high)} / ${num(low)} °C`,
     textColor: "",
     accent: isMissing(high) ? "" : tempColor(high),
-    aside: "",
+    aside,
     meter: null,
     parts: bothMissing ? undefined : [
       { text: num(high), color: textColor(high) },
@@ -87,8 +88,8 @@ export function widestRange(cur: ScopedRow[]): { value: number | null; city: str
 }
 
 /** 溫差卡片：數字不上色，邊框依溫差色階（lib/tempRange.ts）發光。 */
-function rangeCard(label: string, value: number | null): CardModel {
-  return { label, text: formatValue(value, "°C"), textColor: "", accent: rangeColor(value), aside: "", meter: null };
+function rangeCard(label: string, value: number | null, aside = ""): CardModel {
+  return { label, text: formatValue(value, "°C"), textColor: "", accent: rangeColor(value), aside, meter: null };
 }
 
 /** 多縣市摘要：標題列在指標名稱後接縣市名（「最高溫　臺中市」）。 */
@@ -106,10 +107,11 @@ export function summaryCards(cur: ScopedRow[], scope: Scope): CardModel[] {
     if (!row) return [];
     const weather = row.weather_condition ?? "—";
     const icon = weatherIcon(row.weather_condition, isNight(row.forecast_time_start, row.forecast_time_end));
+    const sky = `${icon} ${weather}`.trim();
     return [
-      tempCard("平均氣溫", row.avg, 1, `${icon} ${weather}`.trim()), // 縣市名顯示在輪播最上方（summaryTitle）
-      highLowCard(row.max_temp, row.min_temp),
-      rangeCard("溫差", tempRange(row)),
+      tempCard("平均氣溫", row.avg, 1, sky), // 縣市名顯示在輪播最上方（summaryTitle）
+      highLowCard(row.max_temp, row.min_temp, undefined, sky),
+      rangeCard("溫差", tempRange(row), sky),
       rainCard("降雨機率", row.rain_probability),
     ];
   }

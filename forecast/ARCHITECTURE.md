@@ -1,8 +1,8 @@
 # 程式架構說明
 
 這份文件說明**每個檔案的功能**、資料怎麼流動，以及「想改某個功能該看哪個檔案」。
-需求與規格請看 [SPECIFICATION.md](SPECIFICATION.md)，安裝與操作請看 [README.md](README.md)，前端從 Streamlit 改寫到 Vercel 的決定與過程見 [VERCEL_PLAN.md](VERCEL_PLAN.md)。
-完整的向量圖見 [architecture_diagram.svg](architecture_diagram.svg)（系統總體架構）與 [sequence_diagram.svg](sequence_diagram.svg)（核心資料流程時序圖）；這兩張圖畫的是 Streamlit 版的前端，前端部分以本文件為準。
+需求與規格請看 [SPECIFICATION.md](SPECIFICATION.md)，作業報告請看 [README.md](README.md)，安裝、部署與常見問題請看 [SPECIFICATION.md](SPECIFICATION.md) §11，前端從 Streamlit 改寫到 Vercel 的決定與過程見 [VERCEL_PLAN.md](VERCEL_PLAN.md)。
+完整的向量圖見 [architecture_diagram.svg](architecture_diagram.svg)（系統總體架構）與 [sequence_diagram.svg](sequence_diagram.svg)（核心資料流程時序圖）；兩張圖已於 v2.1.0 更新為 Vercel 版前端。
 
 ## 1. 整體架構
 
@@ -24,6 +24,16 @@ flowchart LR
 
 Streamlit 版的儀表板保留在 `streamlit` 分支（Community Cloud 部署，已關閉「立即更新」）；`main` 上不再有 Streamlit 程式。
 
+### 架構用詞
+
+| 用詞 | 依據 |
+| :--- | :--- |
+| **Serverless** | 沒有自行維護的伺服器：排程靠 GitHub Actions、前端與 API 靠 Vercel、資料庫靠 Supabase，全部使用免費方案 |
+| **讀寫分離** | 資料表只有後端能寫入（`service_role` 金鑰）；前端只能以 `anon` 金鑰讀取，並由 RLS 限制；前後端不共用程式碼 |
+| **ETL 管線** | 後端是「擷取 → 轉換 → 載入」再加告警推播的一條流程，由排程或手動觸發，不回應使用者請求 |
+| **SPA** | 瀏覽器載入一次頁面，之後由 React 在前端算出畫面；切換地區／縣市不重新載入頁面 |
+| **前端分層＋單向資料流** | `lib/`（不依賴 React）→ `hooks/` → `components/`，狀態由上往下傳、事件由下往上回報；屬 React 慣用的關注點分離，並非嚴格的 MVC（沒有獨立的 Controller） |
+
 ## 2. 目錄與分層
 
 ```text
@@ -35,6 +45,8 @@ forecast/
 ├── checks/              需要真實連線的手動檢查
 ├── tools/               維運小工具
 ├── sql/                 Supabase 建表與 RLS 腳本
+├── docs/                背景效果說明（background-effects.md）與互動範例
+├── assets/              README 用的 QR code 與截圖
 └── samples/             氣象署回應範例（本機產生，不進版控）
 ```
 
@@ -186,8 +198,8 @@ flowchart TD
 | `hooks/useDarkMode.ts` | `useThemeMode`、`useDarkMode`、`useNarrow`：目前的主題、實際是否為深色（圖表配色）、手機寬度（圖例換行） |
 | `components/ThemeToggle.tsx` | 主題按鈕（電腦版小圖示鈕、手機版在選單內顯示文字） |
 | `components/UpdateNotices.tsx` | 立即更新的提示、倒數與完成訊息 |
-| `components/Filters.tsx` | 地區與縣市互斥下拉選單 |
-| `components/SummaryCards.tsx` | 摘要輪播：四張卡片一次顯示一張（發光邊框、降雨進度條）；每 4 秒自動換頁，滑鼠移上去、鍵盤焦點或觸碰時暫停（滑鼠點擊留下的焦點不算），減少動態效果時照樣換頁但不播動畫；箭頭與圓點疊在卡片內、手機左右滑動 |
+| `components/Filters.tsx` | 地區與縣市互斥下拉選單（外層 `.select-wrap` 畫 ▾ 箭頭，樣式在 `global.css` 的 `select`） |
+| `components/SummaryCards.tsx` | 摘要輪播：四張卡片一次顯示一張（發光邊框、降雨進度條）；每 4 秒自動換頁，滑鼠移上去、鍵盤焦點或觸碰時暫停（滑鼠點擊留下的焦點、手機點擊後瀏覽器補送的模擬 mouseenter 都不算），減少動態效果時照樣換頁但不播動畫；箭頭與圓點疊在卡片內、手機左右滑動 |
 | `components/MapSection.tsx`、`TemperatureMap.tsx` | 地圖區塊與 Leaflet 地圖本體（雙指／Ctrl 手勢；第一次顯示時才載入 Leaflet） |
 | `components/Tabs.tsx` | 分頁（只渲染目前的分頁） |
 | `components/Trends.tsx`、`VegaChart.tsx` | 氣溫趨勢與降雨機率分頁；Vega 圖表（第一次用到時才載入 vega-embed） |
@@ -255,6 +267,18 @@ flowchart TD
 | `tools/` | 維運小工具：`make_admin_hash`（產生管理者密碼雜湊）、`get_telegram_chat_id` | `python tools/xxx.py` |
 
 自動測試一律不連網、不連資料庫，也不需要 `.env`、`.env.local` 或 `samples/`。前端測試整個以 `America/New_York` 時區執行（`web/tests/setup.ts`），確保程式不依賴執行環境的時區；整頁測試在 jsdom 裡真的渲染 `App`，只把資料庫與 `fetch` 換成假的，圖表與地圖換成只記錄參數的假元件。`npm run build` 會先跑型別檢查與全部測試再打包，Vercel 建置時也一樣。
+
+### 測試指令
+
+```powershell
+# 後端（在 forecast/ 執行）
+pip install -r ../requirements-dev.txt   # 只裝 pytest（開發用，不在 requirements.txt）
+python -m pytest                          # 不連網、不連資料庫、不需要 .env 或 samples/
+
+# 前端（在 forecast/web/ 執行）
+npm test                                  # Vitest；不連網、不連資料庫、不需要 .env.local
+npm run build                             # 型別檢查 → 測試 → 打包（Vercel 建置時也跑這個）
+```
 
 ## 6. 想改某個功能，該看哪個檔案
 

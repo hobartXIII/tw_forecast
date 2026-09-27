@@ -85,9 +85,9 @@ bg.running;                  // 是否正在播放
 - 實際負擔建議用中低階手機實測，觀察幀率、發熱與滑動是否卡頓，或使用 DevTools Performance 面板錄製。
 - 若日後重新開啟毛玻璃：背景每一幀變動，`backdrop-filter` 都要重算，模糊半徑是最貴的參數，應優先調低。
 
-## 後續工作（尚未開始）
+## 後續工作
 
-1. 決定前端框架後，補上對應的掛載元件（React hook / Vue composable）。
+1. ~~決定前端框架後，補上對應的掛載元件（React hook / Vue composable）。~~ 已完成：本專案不包成 React 元件，由 `main.tsx` 掛載一次（見下方「本專案的整合方式」）。
 2. 煙霧版（`docs/demos/smoke-gradient-demo.html`）若要採用，需改寫成 TS 模組，並比照粒子版提供 `start` / `stop` / `setOptions` / `destroy`。需一併處理：
    - `webglcontextlost` / `webglcontextrestored`
    - 不支援 WebGL 時的退回方案（例如只顯示靜態漸層）
@@ -110,7 +110,7 @@ bg.running;                  // 是否正在播放
   - 漸層與光暈（`--bg-left`、`--bg-right`、`--glow-1～3`）本專案原本就有，數值相同，沿用 `body::before`，不另外加 `.pb-bg`。
   - 粒子顏色 `--p-1～3` 只定義在 `:root[data-theme="dark"]`（沿用本專案的 `data-theme` 主題寫法，不用 `light-dark()`；TS 讀的是計算後的顏色，兩種寫法都能用）。
   - 畫布 `.pb-canvas` 與 `body::before` 同為 `z-index: -1`、排在其後，所以畫在光暈之上、內容之下；內容不必另外包 `.pb-content`。
-- **毛玻璃**：本專案的卡片與面板仍保留 `backdrop-filter`（交接包是關閉的）。2026-09-27 在桌機（Edge、1280px、深色）量測，開啟粒子前後頁面都維持約 144 fps；中低階手機仍需實測，若卡頓，先調低 `--glass-blur`。
+- **毛玻璃**：整合當時卡片與面板保留了 `backdrop-filter`（2026-09-27 在桌機 Edge、1280px、深色量測，開啟粒子前後都維持約 144 fps）。同日改為**透明玻璃**：卡片、面板、按鈕、下拉都拿掉 `backdrop-filter`、刪除 `--glass-blur`，`--glass-bg` 濃度約減半，粒子直接透過卡片可見；只剩地圖圖例／提示框與告警視窗背後保留模糊。背景每幀變動時不必再重算卡片的模糊，手機負擔較小。
 - **這台開發電腦**關閉了 Windows「動畫效果」，瀏覽器回報 `prefers-reduced-motion: reduce`，所以只會看到靜態的一幀（預期行為，正式環境維持 `respectReducedMotion: true`）。
 - **淺色主題**不播粒子，改用純 CSS 的水平流動：`body::before` 加寬成 400vw、圖樣以 200vw 為週期重複，`translateX(-50% → 0)` 無限循環（`--bg-flow-duration`，預設 60s = 每 30 秒移一個畫面寬），只動 `transform`；減少動態效果時靜止。
 - **手機（≤ 640px）**：同樣「每 30 秒一個畫面寬」換算成像素太慢，改為 `--bg-flow-duration: 24s`（約 12 秒一個畫面寬），`--glow-1～3` 的濃度提高約 1.6 倍。

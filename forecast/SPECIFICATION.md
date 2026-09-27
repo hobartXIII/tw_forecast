@@ -21,6 +21,7 @@
 8. [流程二實作規格：儀表板讀取 Supabase 視覺化與部署（Vercel）](#8-流程二實作規格儀表板讀取-supabase-視覺化與部署vercel)
 9. [專案目錄與檔案結構藍圖](#9-專案目錄與檔案結構藍圖)
 10. [實施里程碑與驗收清單](#10-實施里程碑與驗收清單)
+11. [環境建置、部署與常見問題](#11-環境建置部署與常見問題)
 
 ---
 
@@ -117,7 +118,7 @@ admin_get / save_alert_settings"]
 #### 🖼️ 系統總體架構圖視覺呈現 (Architecture Visual Diagram)
 ![系統總體架構圖 (向量繁中版)](architecture_diagram.svg)
 
-> 💡 上圖為 Mermaid 版本（v2.0.0 已更新為 Vercel 前端）；向量圖檔 `architecture_diagram.svg` 是 v1.12.5 依 Streamlit 版繪製，前端部分以 Mermaid 版為準。
+> 💡 Mermaid 版本見上方；向量圖檔 `architecture_diagram.svg` 原為 v1.12.5 依 Streamlit 版繪製，v2.1.0 起前端改為 Vercel 版（版面沿用，後端與 Supabase 部分不變）。
 
 ---
 
@@ -171,7 +172,7 @@ sequenceDiagram
 #### 🖼️ 核心資料流程時序圖視覺呈現 (Sequence Visual Diagram)
 ![核心資料流程時序圖 (向量繁中版)](sequence_diagram.svg)
 
-> 💡 Mermaid 版本見上方（v2.0.0 已更新為 Vercel 前端）；圖檔是 v1.12.5 依 Streamlit 版繪製，「立即更新」的路徑以 Mermaid 版為準。
+> 💡 Mermaid 版本見上方；圖檔原為 v1.12.5 依 Streamlit 版繪製，v2.1.0 起前端改為 Vercel 版（「立即更新」經 `api/dispatch`，60 秒後重新查詢資料與狀態）。
 
 ---
 
@@ -299,8 +300,8 @@ records.Locations[]                     ← 1 筆 (LocationsName "台灣"，Data
   ```bash
   WEATHER_API_KEY="CWA-XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX"
   SUPABASE_URL="https://your-project.supabase.co"
-  SUPABASE_KEY="eyJhbGciOiJIUzI1NiIsIn..."   # service_role
-  SUPABASE_ANON_KEY="eyJhbGciOiJIUzI1NiIsIn..."   # anon（選填，只給 checks/ 的 RLS 檢查用）
+  SUPABASE_KEY="eyJhbGciOiJIUzI1NiIsIn..."   # service_role（新版金鑰為 sb_secret_…）
+  SUPABASE_ANON_KEY="eyJhbGciOiJIUzI1NiIsIn..."   # anon（新版為 sb_publishable_…；選填，只給 checks/ 的 RLS 檢查用）
   TELEGRAM_BOT_TOKEN="123456789:AAxxxxxxxx"
   TELEGRAM_CHAT_ID="123456789"
   ```
@@ -587,9 +588,9 @@ jobs:
 2. **「目前時段」定義**：查詢 `forecast_time_start <= 現在 < forecast_time_end` 的各縣市資料；若無符合資料，取最接近現在的最新時段。
    - **頁面左右留白**：兩側各 `(視窗寬度 - 1200px) / 6 + 5px`、最少 16px（v2.1.0 起縮為原本「內容最寬 1200px 置中」留白的 1/3；1920px 螢幕約 125px、1280px 約 18px）。
    - **版面**：過期警示在整列寬度；其下為左右兩欄：左欄寬度為內容寬的 2/9（最少 240px；1280px 螢幕約 273px），由上而下為更新資訊（最近排程更新、最近手動更新、手動更新需間隔 20 分鐘、預報時段、資料更新、時間皆為台灣時間，每項一行、不用粗體，全部為主文字色（深色模式近白、淺色模式深褐），包在與摘要卡片同款的玻璃框裡；時間不拆開，放不下時整段換到下一行。**手機版**預設收合成一條按鈕「🕒 資料更新 MM/DD HH:MM ▾」，點一下展開完整清單、再點收合；電腦版永遠展開、沒有按鈕）、地區、縣市下拉（上下排列）與重點摘要輪播，靠左對齊，並與地圖區塊等高（更新資訊、地區、縣市、輪播四個區塊：最上方的更新資訊貼齊地圖框頂端、輪播貼齊底部，區塊之間的間距平均分配，最少 12px；手機上為一般的 12px 間距。更新資訊每行之間的距離由 `--info-line-gap`（12px）、標籤與下拉之間由 `--field-label-gap`（6px）、輪播高度由 `--carousel-height`（200px，手機 150px）設定；左欄貼齊地圖，輪播越高區塊間距越小，1280px 螢幕約 38px），左欄的文字（更新資訊、「地區」「縣市」標籤、卡片標題與天氣文字）與提示框同為 16px；右欄為地圖，佔其餘寬度（兩欄間距 16px）；手機（≤ 640px）改為上下排列：篩選 → 輪播 → 地圖。
-   - **重點摘要（輪播）**：4 張卡片一次顯示一張；方塊與上方地區／縣市選單同寬，都等於左欄寬度（手機上為整欄寬），高度 200px（手機 150px），標題、數值與天氣文字水平與垂直置中（標題 1.2rem、數值 44px、天氣文字 1.1rem；標題只在空白處換行，如「最高降雨機率」／「臺北市」）；四張卡片版型一致：沒有進度條的卡片也保留進度條的位置（不顯示），每張都撐滿輪播高度，數值位置與圓點離底部邊框的距離都相同。每 4 秒自動換下一張（`lib/carousel.ts` 的 `CAROUSEL_INTERVAL_MS`），滑鼠移上去、以鍵盤（Tab）把焦點移進輪播或手指觸碰時暫停，手動換頁後重新計時；滑鼠點擊箭頭後焦點雖留在按鈕上，但不是鍵盤焦點（`:focus-visible`），不會暫停。系統設定「減少動態效果」（Windows 關閉「動畫效果」也算）時照樣自動換頁，只取消淡入與滑動動畫。‹ › 箭頭疊在卡片內左右兩側、4 個圓點疊在卡片內底部，可直接切換，頭尾相接；手機上左右滑動超過 40px 換頁（垂直為主的滑動照常捲動頁面）。切換時淡入並輕微滑入（四張卡片疊在同一格，不裁切，卡片光暈完整）；看不到的卡片對螢幕閱讀器隱藏。切換地區或縣市時回到第一張。4 張卡片的內容（v2.1.0 起最高溫與最低溫合併、新增溫差）：
+   - **重點摘要（輪播）**：4 張卡片一次顯示一張；方塊與上方地區／縣市選單同寬，都等於左欄寬度（手機上為整欄寬），高度 200px（手機 150px），標題、數值與天氣文字水平與垂直置中（標題 1.2rem、數值 44px、天氣文字 1.1rem；標題只在空白處換行，如「最高降雨機率」／「臺北市」）；四張卡片版型一致：沒有進度條的卡片也保留進度條的位置（不顯示），每張都撐滿輪播高度，數值位置與圓點離底部邊框的距離都相同。每 4 秒自動換下一張（`lib/carousel.ts` 的 `CAROUSEL_INTERVAL_MS`），滑鼠移上去、以鍵盤（Tab）把焦點移進輪播或手指觸碰時暫停，手動換頁後重新計時；「滑鼠移上去」只認真的滑鼠（`pointerType === "mouse"`），手機點過箭頭或圓點後瀏覽器補送的模擬 mouseenter 不算，否則會一直暫停；滑鼠點擊箭頭後焦點雖留在按鈕上，但不是鍵盤焦點（`:focus-visible`），不會暫停。系統設定「減少動態效果」（Windows 關閉「動畫效果」也算）時照樣自動換頁，只取消淡入與滑動動畫。‹ › 箭頭疊在卡片內左右兩側、4 個圓點疊在卡片內底部，可直接切換，頭尾相接；手機上左右滑動超過 40px 換頁（垂直為主的滑動照常捲動頁面）。切換時淡入並輕微滑入（四張卡片疊在同一格，不裁切，卡片光暈完整）；看不到的卡片對螢幕閱讀器隱藏。切換地區或縣市時回到第一張。4 張卡片的內容（v2.1.0 起最高溫與最低溫合併、新增溫差）：
      - **多縣市**：平均氣溫；最高／最低溫（數值為「最高 / 最低 °C」兩個數字各依級距上色，下方小字列出兩者各是哪個縣市，如「桃園市 / 苗栗縣」）；最大溫差（各縣市自己的「最高溫 − 最低溫」中最大的一個，標題接縣市名，如「最大溫差　桃園市」；邊框依溫差色階發光：< 6 °C 淡紫、6～9 °C 紫、≥ 10 °C 深紫，`lib/tempRange.ts`）；最高降雨機率（標題接縣市名）。
-     - **單一縣市**：該縣市的平均氣溫、最高／最低溫、溫差、降雨機率，天氣現象（圖示與文字）顯示在平均氣溫數值（°C）的下一行。輪播每張卡片的最上方以粗體顯示範圍名稱（`lib/summary.ts` 的 `summaryTitle`）：未選縣市時為「全部地區」或被選的地區，選了縣市時為縣市名稱（因此平均氣溫卡片的標題只寫「平均氣溫」，不再重複縣市名）；四張卡片都一樣，切換時固定不動。欄位為 NULL 時顯示「—」。卡片邊框依級距色發光（邊框混入淡淡的級距色，外圍加一圈同色柔光，深色主題光暈較濃）：溫度卡片依氣溫級距（與地圖標記同色），降雨機率卡片依降雨色階（`lib/rain.ts`：< 30% 淡天藍、30～59% 雨藍、≥ 60% 靛藍，60% 與告警門檻一致），降雨機率卡片另在數值下方加一條同色進度條；數值為 NULL 時為一般玻璃邊框、不發光，也不畫進度條。
+     - **單一縣市**：該縣市的平均氣溫、最高／最低溫、溫差、降雨機率，天氣現象（圖示與文字，如「🌤️ 晴時多雲」）顯示在平均氣溫、最高／最低溫、溫差三張卡片數值（°C）的下一行（降雨機率卡片下方已有進度條，不加）。輪播每張卡片的最上方以粗體顯示範圍名稱（`lib/summary.ts` 的 `summaryTitle`）：未選縣市時為「全部地區」或被選的地區，選了縣市時為縣市名稱（因此平均氣溫卡片的標題只寫「平均氣溫」，不再重複縣市名）；四張卡片都一樣，切換時固定不動。欄位為 NULL 時顯示「—」。卡片邊框依級距色發光（邊框混入淡淡的級距色，外圍加一圈同色柔光，深色主題光暈較濃）：溫度卡片依氣溫級距（與地圖標記同色），降雨機率卡片依降雨色階（`lib/rain.ts`：< 30% 淡天藍、30～59% 雨藍、≥ 60% 靛藍，60% 與告警門檻一致），降雨機率卡片另在數值下方加一條同色進度條；數值為 NULL 時為一般玻璃邊框、不發光，也不畫進度條。
    - 若沒有涵蓋此刻的時段（資料過期），以警示提醒「顯示的是最接近的時段…可按『立即更新』」。
 3. **地區／縣市互斥下拉選單**（兩個原生 `<select>`，整頁內容都跟著選擇更新）：
    - 「地區」：`全部地區`、`北部地區`、`中部地區`、`南部地區`、`東部地區`、`離島地區`（澎湖、金門、連江不屬於四大分區，另列離島）；縣市對應分區由前端靜態對照表（`lib/regions.ts`）提供。
@@ -662,13 +663,12 @@ jobs:
    - **密碼處理**：密碼只放在這個頁面的記憶體（React 的 `useRef`），不寫入 localStorage、不寫入日誌、不顯示；錯誤訊息一律遮蔽密碼；送出後輸入框清空。重新整理或關閉分頁即登出（`VERCEL_PLAN.md` §6 的方式 A）。
    - **閒置逾時**：超過 15 分鐘沒有操作即登出（每 15 秒檢查一次，視窗關著也會登出），以右下角浮動提示「已因閒置超過 15 分鐘登出，請重新登入」；登出、密碼失效也以浮動提示告知。
    - 資料層在 `lib/admin.ts`（`AlertSettingsService`），登入狀態與流程在 `hooks/useAdminSession.ts`，畫面在 `components/AdminDialogs.tsx`；沿用 `anon` 金鑰，沒有新增任何環境變數。
-9. **玻璃擬態外觀（淺色／深色）**：
+9. **外觀與主題（淺色／深色）**：
    - **主題**：淺色（淡米白 `#F7F5F0` → 淡天空藍 `#EAF3F8` 的左右漸層）與深色（深藍灰 `#12141C`）。標題列的**主題按鈕**點一下依序切換「🌓 自動（跟著系統）→ ☀️ 淺色 → 🌙 深色 → 自動」，預設為自動（跟著 `prefers-color-scheme`，系統改設定時即時切換）。電腦版是標題列最右邊只有圖示的小按鈕（滑鼠移上去顯示目前主題與下一個）；手機版收在「☰ 選單」裡、顯示「主題：…」文字，按了不會收起選單（可以連按）。選擇記在瀏覽器（localStorage，key `tw-forecast-theme`；選回自動即刪除），讀寫失敗（如私密模式）時當作自動。`index.html` 在頁面載入前先套用，不會先閃一下另一種顏色。實作在 `lib/theme.ts`：算出實際是淺色或深色，一律寫到 `<html data-theme>`，CSS 只有一份深色規則；圖表配色（`useDarkMode`）也依此切換。
-   - **樣式**：全部在 `web/src/styles/global.css`。顏色與模糊程度集中為 `:root` 的 CSS 變數（`--glass-bg`、`--glass-border`、`--glass-shadow`、`--glass-blur`、`--glow-1～3` 等），深色模式在 `:root[data-theme="dark"]` 覆寫。
-   - **套用範圍**：背景在淺色為左右線性漸層加三個淡光暈（左上淡青綠、右上天藍、右下淡紫；v2.1.0 起原本的暖橘換成淡青綠，整體改為冷色調），深色為深藍灰底加三個較濃的彩色光暈（玻璃需要背後有色彩變化才看得出模糊；背景放在固定的 `body::before`，因為 iOS Safari 不支援 `background-attachment: fixed`）；重點摘要 4 張卡片為玻璃卡片，載入時由下往上依序淡入（每張間隔 80ms）、降雨進度條由左長出，滑鼠移上去微微浮起、光暈變亮；地圖區與分頁區各為一個玻璃面板（手機上內距縮小）；按鈕與下拉也是玻璃外觀（展開的選項清單不透明）；分頁頁籤為藥丸狀（選中的頁籤為淡主色底加細框，滑鼠移上去淡淡亮起）；系統設定「減少動態效果」（`prefers-reduced-motion`）時不套用動畫；滑鼠移上的效果只在有滑鼠的裝置（`hover: hover`）套用，觸控螢幕點過之後不會一直亮著；兩個告警視窗背後頁面模糊，視窗加圓角、細邊框與陰影，視窗底色不透明（內部表格才讀得清楚）；地圖圖例與提示框見第 6 點。
+   - **樣式**：全部在 `web/src/styles/global.css`。顏色集中為 `:root` 的 CSS 變數（`--glass-bg`、`--glass-border`、`--glass-shadow`、`--glow-1～3` 等），深色模式在 `:root[data-theme="dark"]` 覆寫。
+   - **套用範圍**：背景在淺色為左右線性漸層加三個淡光暈（左上淡青綠、右上天藍、右下淡紫；v2.1.0 起原本的暖橘換成淡青綠，整體改為冷色調），深色為深藍灰底加三個較濃的彩色光暈（背景放在固定的 `body::before`，因為 iOS Safari 不支援 `background-attachment: fixed`）；重點摘要 4 張卡片為玻璃卡片，載入時由下往上依序淡入（每張間隔 80ms）、降雨進度條由左長出，滑鼠移上去微微浮起、光暈變亮；地圖區與分頁區各為一個玻璃面板（手機上內距縮小）；按鈕與下拉也是玻璃外觀（展開的選項清單不透明）；**玻璃為透明玻璃**（2026-09-27 起，原本為毛玻璃）：卡片、面板、更新資訊框、按鈕與下拉都不加 `backdrop-filter`，背景與深色主題的粒子直接透出來，底色 `--glass-bg` 為淺色 `rgba(255,255,255,0.28)`、深色 `rgba(255,255,255,0.035)`；只有地圖圖例與提示框（疊在地圖上，模糊 10px 讓字讀得清楚）和告警視窗背後的頁面仍保留模糊；下拉選單（地區、縣市、日期查詢）與手機版更新資訊框一致：16px 圓角、左右 16px 內距，原生箭頭關閉（`appearance: none`），改由外層 `.select-wrap` 的 `::after` 在右側畫主文字色的 ▾（各瀏覽器外觀一致，不接收點擊，選單打開時不旋轉）；分頁頁籤為藥丸狀（選中的頁籤為淡主色底加細框，滑鼠移上去淡淡亮起）；系統設定「減少動態效果」（`prefers-reduced-motion`）時不套用動畫；滑鼠移上的效果只在有滑鼠的裝置（`hover: hover`）套用，觸控螢幕點過之後不會一直亮著；告警視窗加圓角、細邊框與陰影，視窗底色不透明（內部表格才讀得清楚）；地圖圖例與提示框見第 6 點。
    - **淺色主題的水平流動**：背景的底色漸層與三個光暈由左往右慢慢平移（每 30 秒移一個畫面寬，`--bg-flow-duration: 60s` 為一個週期；手機畫面窄，改為約 12 秒一個畫面寬（24s 一個週期）、光暈濃度約 1.6 倍，並把光暈改成「小而多」：每個週期 5 個半徑 60vw 的色團（淡青綠、天藍、淡紫輪流）、高低錯落，桌機版的大光暈在直立手機上比整個畫面還寬，移動時看不出流動），圖樣以兩個畫面寬為週期重複，循環時看不出接縫；只動 `transform`，減少動態效果時靜止（畫面與原本相同）。深色主題不動，改由背景粒子流動。
    - **背景流場粒子（僅深色主題）**：深色時在漸層光暈之上、內容之下，以 Canvas 2D 畫約 100 顆柔和光點沿流場緩慢飄動（30fps 上限、分頁隱藏時暫停、減少動態效果時只畫靜態一幀）；淺色主題停止並隱藏。顏色為 CSS 變數 `--p-1～3`。說明見 `forecast/docs/background-effects.md`。
-   - **已知限制**：深色主題下地圖底圖仍是淺色圖磚（OpenStreetMap）。
 10. **日期查詢（歷史預報存檔）**：
    - **位置**：明細分頁的最右邊「📅 日期查詢」分頁（全台／地區層級在「後續時段」右邊；單一縣市層級在「一週預報」右邊）。
    - **可選日期**：下拉選單只列**資料庫裡有完整 12 小時時段**的日期，範圍為今天前 3 天到後 7 天（以台灣日期計）；只查一個縣市的時段起點就能得到清單（所有縣市同一批寫入），筆數約 30。預設為「請選擇日期」，選了才查表格。
@@ -699,7 +699,7 @@ const { data, error } = await sb.from("weather_forecasts").select("*")
 ### 8.3 部署至 Vercel
 1. 將 repo 推送至 GitHub（`HW1/` 為 repo 根目錄，見 §9）。
 2. 於 Vercel 匯入此 repo，**Root Directory** 設為 `forecast/web`，Framework Preset 選 **Vite**（`vercel.json` 已指定）；建置指令為 `npm run build`（型別檢查 → Vitest → 打包，測試失敗就不部署）。
-3. 於 **Settings → Environment Variables** 設定 §4.2 所列變數（類型選 **Config**、勾選 Production）。
+3. 於 **Settings → Environment Variables** 設定 §4.2 所列變數（類型選 **Config**、勾選 Production；值不要加引號，貼上前把輸入法切成英文）。改了變數要到 Deployments 選 **Redeploy** 才生效。
 4. **只在前端有變動時建置**：`vercel.json` 的 `ignoreCommand` 為 `git diff --quiet HEAD^ HEAD -- .`，只改後端或文件時不會觸發建置。
 5. 部署後，push 至 `main` 會自動重新部署；資料更新則由 GitHub Actions 寫入 Supabase，頁面重新整理即可看到，不需要重新部署。
 
@@ -748,7 +748,8 @@ HW1/                                     # repo 根目錄
     │   │   ├── lib/                     # 資料存取與純函式（查詢、篩選範圍、表格、圖表規格、地圖、級距、更新門檻、告警設定資料層）
     │   │   ├── server/                  # updateService.ts：「立即更新」的伺服器端邏輯（只給 api/ 用）
     │   │   ├── hooks/                   # useUpdateFlow、useAdminSession、useDarkMode
-    │   │   ├── components/              # 畫面元件（篩選、摘要卡片、地圖、分頁、表格、告警設定視窗等）
+│   │   ├── background/              # 深色主題的背景流場粒子（particle-background.ts、darkOnly.ts）
+    │   │   ├── components/              # 畫面元件（篩選、摘要輪播、地圖、分頁、表格、告警設定視窗等）
     │   │   └── styles/global.css        # 全部樣式（淺色／深色、玻璃擬態、動畫、手機版）
     │   ├── tests/                       # Vitest（不連網、不連資料庫；以非台灣時區執行）
     │   ├── .env.example                 # 前端環境變數範本（實際 .env.local 不得 commit）
@@ -766,6 +767,9 @@ HW1/                                     # repo 根目錄
     │   ├── make_admin_hash.py           # 本機產生管理者密碼的 bcrypt 雜湊（只在本機使用，需 pip install bcrypt）
     │   └── get_telegram_chat_id.py      # 查詢 TELEGRAM_CHAT_ID（token 只讀本機 .env）
     ├── pytest.ini                       # pythonpath = src tests
+    ├── docs/                            # background-effects.md（背景效果說明）、demos/（互動範例）
+    ├── assets/                          # README 用的 QR code 與 screenshots/ 截圖
+    ├── architecture_diagram.svg、sequence_diagram.svg   # 系統架構圖、核心時序圖
     ├── ARCHITECTURE.md                  # 程式架構說明：每個檔案的功能、前後端資料流、修改對照表
     ├── VERCEL_PLAN.md                   # 前端改寫到 Vercel 的決定、步驟與交接紀錄
     ├── sql/
@@ -809,7 +813,22 @@ HW1/                                     # repo 根目錄
 - 留意 **2026-10-19** GitHub 的 `ubuntu-latest` 會遷移到 Ubuntu 26（Actions 日誌上的通知）：遷移後觀察排程是否正常；若有相容性問題，可先把 `runs-on` 暫時固定為 `ubuntu-24.04`。目前未受影響，遷移後的行為尚未驗證。
 
 ### 10.3 版本紀錄
-- **v2.1.0**：新增淺色／深色的主題切換按鈕（自動／淺色／深色三種，記在瀏覽器；電腦版為小圖示鈕，手機版在選單內；見 §8.1 第 9 點），新增 `lib/theme.ts`、`components/ThemeToggle.tsx`；更新資訊（最近排程／手動更新、預報時段、資料更新）、地區／縣市篩選與重點摘要移到地圖左側（兩欄版面，更新資訊每項一行，手機上下排列）；4 張摘要卡片改為輪播（寬度為左欄的 2/3、文字置中），箭頭與圓點疊在卡片內；頁面左右留白縮為原本的 1/3（每 4 秒自動換頁，滑鼠移上去、鍵盤焦點或觸碰時暫停；減少動態效果時照樣換頁但不播動畫；手機左右滑動；換範圍時回到第一張）。本機確認時發現並修正：Windows 關閉動畫效果時原本完全不自動換頁、滑鼠按過箭頭後焦點留在按鈕上導致一直暫停（已在真實瀏覽器驗證）。新增 `lib/carousel.ts` 與 16 項測試（Vitest 共 198 項）；已在電腦（淺色、深色）與手機（390px）截圖確認。
+
+**開發歷程摘要**：自 2026-09-20 起共約 85 個 commit，版本從 v1.2.0 演進到 v2.1.0，主要階段如下，逐版細節見表格後的紀錄。
+
+| 版本 | 內容 |
+| :--- | :--- |
+| v1.2～v1.5 | 建立「GitHub Actions → Supabase → Streamlit」基本架構；加入 `updated_at`、`pipeline_status`、手動更新間隔與地區／縣市篩選 |
+| v1.6～v1.8 | 推播改用 Telegram；告警設定改存資料庫（各縣市門檻、發送時段），加入需管理者密碼的設定視窗 |
+| v1.9～v1.11 | 玻璃擬態外觀與深淺色主題、日期查詢分頁、手機版選單 |
+| v1.12 | 程式碼重構為 `src/tw_forecast/`（backend／frontend 分層）；修正立即更新與篩選的問題 |
+| v1.13～v1.15 | 更新倒數、視覺強化、手機上的操作細節（提示框收起、下拉不跳鍵盤） |
+| v2.0 | 前端改寫為 Vite + React + TypeScript 並部署到 Vercel（分 7 個階段：骨架、資料層、唯讀畫面、地圖、視覺、立即更新、告警設定）；Streamlit 版移到 `streamlit` 分支 |
+| v2.1 | 左欄（更新資訊、篩選、摘要輪播）與地圖兩欄版面、主題切換按鈕、地圖標記改版（降雨環）、背景動態（深色粒子、淺色水平流動）、透明玻璃、溫差卡片 |
+
+**逐版紀錄**：
+
+- **v2.1.0**：新增淺色／深色的主題切換按鈕（自動／淺色／深色三種，記在瀏覽器；電腦版為小圖示鈕，手機版在選單內；見 §8.1 第 9 點），新增 `lib/theme.ts`、`components/ThemeToggle.tsx`；更新資訊（最近排程／手動更新、預報時段、資料更新）、地區／縣市篩選與重點摘要移到地圖左側（兩欄版面，更新資訊每項一行，手機上下排列）；4 張摘要卡片改為輪播（寬度為左欄的 2/3、文字置中），箭頭與圓點疊在卡片內；頁面左右留白縮為原本的 1/3（每 4 秒自動換頁，滑鼠移上去、鍵盤焦點或觸碰時暫停；減少動態效果時照樣換頁但不播動畫；手機左右滑動；換範圍時回到第一張）。本機確認時發現並修正：Windows 關閉動畫效果時原本完全不自動換頁、滑鼠按過箭頭後焦點留在按鈕上導致一直暫停（已在真實瀏覽器驗證）。新增 `lib/carousel.ts` 與 16 項測試（Vitest 共 198 項）；已在電腦（淺色、深色）與手機（390px）截圖確認。同版後續修改：下拉選單（地區、縣市、日期查詢）改為 16px 圓角與自訂 ▾ 箭頭，與手機版更新資訊框一致；單一縣市時最高／最低溫、溫差卡片也顯示天氣現象；修正手機點過輪播箭頭或圓點後不再自動換頁（瀏覽器補送的模擬 mouseenter 被當成滑鼠移上去）；卡片、面板、按鈕與下拉由毛玻璃改為透明玻璃（拿掉 `backdrop-filter`、`--glass-bg` 濃度約減半）；README 截圖、`architecture_diagram.svg`、`sequence_diagram.svg` 更新為 Vercel 版（Vitest 共 221 項）。
 - **v2.0.0**：前端改寫為 Vite + React + TypeScript 並部署到 Vercel（`forecast/web/`，規劃與過程見 `VERCEL_PLAN.md`）。功能與 Streamlit 版逐項一致，差異：「立即更新」改由 Vercel Functions（`api/update-status`、`api/dispatch`）在伺服器端判斷並觸發，觸發後的鎖定改查 GitHub 上未完成的手動 run（取代伺服器記憶體的 `DispatchLog`）；觸發後 60 秒改為重新查詢資料（不整頁重跑，開著的視窗不受影響）；告警設定的密碼只放在頁面記憶體，閒置逾時改為背景檢查；選擇的地區／縣市保存在網址參數；表格可點欄位排序；主題跟隨系統設定。`main` 上刪除 Streamlit 版前端（`src/tw_forecast/frontend/`、`streamlit_app/`、`tests/frontend/`、`.streamlit/`）與只給前端用的套件（`pandas`、`streamlit`、`folium`、`streamlit-folium`）；Streamlit 版保留在 `streamlit` 分支（其 v1.16.0、v1.16.1 只存在於該分支）。
 - **v1.15.3**：驗證狀態更新：v1.15.1（手機上滑動時收起趨勢圖提示框）與 v1.15.2（手機上點縣市下拉不跳鍵盤）已由使用者於 2026-09-23 在手機上確認正常。
 - **v1.15.2**：手機上點「縣市」下拉不再跳出鍵盤：縣市選單設 `filter_mode=None`（Streamlit 1.64 在手機上選項 > 10 個時輸入框可打字，會叫出鍵盤），代價是電腦上也不能打字搜尋縣市；新增 1 項整頁測試；已在瀏覽器確認縣市輸入框為 `inputmode="none"`。
@@ -846,3 +865,80 @@ HW1/                                     # repo 根目錄
 ---
 
 *本規格書目前為 v2.1.0。*
+
+---
+
+## 11. 環境建置、部署與常見問題
+
+> 由 README 附錄移入（2026-09-27）。
+
+### 11.1 本機環境建置
+
+以下指令除非另外註明，都在 `forecast/` 目錄下執行。
+
+1. 安裝 Python 3.11+，建立虛擬環境並安裝後端套件：
+   ```powershell
+   python -m venv .venv
+   .venv\Scripts\Activate.ps1
+   pip install -r ../requirements.txt
+   ```
+2. 後端金鑰：複製 `.env.example` 為 `.env`，填入 `WEATHER_API_KEY`、`SUPABASE_URL`、`SUPABASE_KEY`（`service_role`）等值；要執行 `checks/check_rls.py`、`checks/check_admin_rpc.py` 再加填 `SUPABASE_ANON_KEY`（`anon`）。`.env` 不會被 commit。
+3. 驗證氣象署 API 並存下範例回應：
+   ```powershell
+   python checks/check_cwa_api.py            # 存到 samples/F-D0047-091.json（不會被 commit）
+   ```
+4. 於 Supabase SQL Editor 執行 `sql/init_supabase.sql` 建表（可重複執行；也會補上 `updated_at` 欄位、觸發器、台灣時區設定，並建立 `pipeline_status` 表）。之後可執行 `python checks/check_rls.py` 驗證 `anon` 可讀不可寫。
+5. 設定 Telegram 推播（只推給自己）：
+   1. 在 Telegram 搜尋 **@BotFather** → `/newbot` → 取得 token，寫入 `.env` 的 `TELEGRAM_BOT_TOKEN`（**token 不要貼到聊天或 commit**）。
+   2. 打開你的機器人，按 **Start**（機器人必須先被你啟動才能傳訊息給你）。
+   3. 取得 chat_id：`python tools/get_telegram_chat_id.py`（加 `--write` 可自動寫入 `.env`）。
+   4. 確認手機收得到：`python checks/check_notify.py`（加 `--dry-run` 只印出訊息內容）。
+6. 啟用告警：建議在儀表板標題列按「⚙️ 告警設定」，勾選縣市的「啟用」、條件開關、門檻與發送時段後儲存（需先完成第 7 步的管理者密碼；可用正式網址，或第 9 步在本機啟動前端）。也可以在 Supabase SQL Editor 直接執行（範例也在 `sql/init_supabase.sql` 檔尾）：
+   ```sql
+   UPDATE public.alert_city_settings SET enabled = true WHERE location_name = '臺北市';          -- 啟用臺北市
+   UPDATE public.alert_city_settings SET rain_threshold = 0 WHERE location_name = '臺北市';       -- 降雨門檻 0：一定符合，用來測試推播
+   UPDATE public.alert_city_settings SET min_temp_enabled = false WHERE location_name = '臺北市'; -- 關閉低溫條件
+   UPDATE public.alert_slot_settings SET enabled = false WHERE slot = '14:45';                  -- 不在 14:45 發送
+   ```
+   兩種方式寫的是同一份設定，都在下一個排程時槽生效。判斷視窗為「本次發送時槽到下一個啟用的發送時槽之前」，含進行中的預報時段（訊息標示進行中／即將開始）。
+7. 管理者密碼與設定面板（一次性設定）：
+   1. 在 Supabase SQL Editor 執行 `sql/init_supabase.sql`（會建立 `private` schema、密碼表與兩個驗證函式）。
+   2. 相容性檢查：`pip install bcrypt`（只在本機使用，不在 `requirements.txt`），執行 `python tools/make_admin_hash.py --selftest`，把印出的 SQL 貼到 SQL Editor 執行，結果應為 `true`。
+   3. 產生密碼雜湊：執行 `python tools/make_admin_hash.py`，輸入 12 碼以上、大小寫加數字的隨機密碼（輸入時不顯示、不會存檔），把印出的 `INSERT` SQL 貼到 SQL Editor 執行。**不要把密碼明文貼進 SQL Editor。**
+   4. 驗證：`python checks/check_admin_rpc.py`（輸入密碼）；再到儀表板標題列按「⚙️ 告警設定」實際登入（先把輸入法切成英文）。若顯示密碼錯誤，可用 `python tools/make_admin_hash.py --verify`（貼上資料庫裡的 `password_hash`、輸入密碼）在本機分辨是「密碼輸入不一致」還是「雜湊本身有問題」；`getpass` 在某些終端機不支援貼上，請手動輸入密碼。
+   5. 忘記密碼：重新執行第 3 步寫入新的雜湊值即可（頁面上沒有改密碼功能）。
+8. 試跑流程一（不寫入資料庫、不推播）：
+   ```powershell
+   python scripts/fetch_and_store.py --dry-run                 # 打 API
+   python scripts/fetch_and_store.py --dry-run --from-sample   # 讀 samples/ 離線測試
+   python scripts/fetch_and_store.py                           # 正式：寫入 Supabase（本機視為手動，不推播；要測推播可設 GITHUB_EVENT_NAME=schedule）
+   ```
+9. 前端本機執行（需要 Node.js 20 以上；在 `forecast/web/` 執行）：
+   ```powershell
+   npm install
+   copy .env.example .env.local     # 填入 VITE_SUPABASE_URL、VITE_SUPABASE_ANON_KEY（只放 anon key，不可放 service_role）
+   npm run dev                      # http://localhost:5173
+   ```
+   `npm run dev` 同時提供頁面與 `api/`（「立即更新」）。要在本機使用「立即更新」，`.env.local` 另需 `GH_REPO`（`owner/repo`）與 `GH_DISPATCH_TOKEN`（僅授權 Actions 讀寫的 fine-grained PAT，**不可**加 `VITE_` 前綴）；沒填時按鈕會顯示「尚未設定」並停用。
+
+### 11.2 部署步驟
+
+**GitHub Actions（後端）**：到 repo 的 Settings → Secrets and variables → Actions 新增 `WEATHER_API_KEY`、`SUPABASE_URL`、`SUPABASE_KEY`；要啟用告警再加 `TELEGRAM_BOT_TOKEN` 與 `TELEGRAM_CHAT_ID`（沒設也能執行，只是略過推播）。Secret 的值直接貼上，**不要加引號**。設好後到 Actions 分頁手動執行一次確認。
+
+**Vercel（前端）**：見 §8.3。
+
+**Streamlit Community Cloud（備用）**：部署 `streamlit` 分支，Main file path 為 `forecast/streamlit_app/app.py`，步驟見該分支的 README。
+
+### 11.3 常見問題
+
+| 現象 | 原因與處理 |
+| :--- | :--- |
+| 啟用了縣市卻收不到告警 | 依序確認：① 已在 Supabase 執行新版 `init_supabase.sql`；② 在「⚙️ 告警設定」中該縣市有勾選「啟用」（即 `enabled = true`）；③ 目前排程時槽在設定視窗勾選的發送時段（08:45／14:45／20:45）；④ 條件有符合（可暫時把降雨門檻設為 0 測試）；⑤ GitHub Secrets 有 `TELEGRAM_BOT_TOKEN`、`TELEGRAM_CHAT_ID`；⑥ 是排程執行而非「立即更新」（手動更新不推播）。日誌會寫明略過的原因。 |
+| 「⚙️ 告警設定」登入時顯示「設定功能尚未啟用」 | 資料庫函式不存在：請在 Supabase 執行新版 `sql/init_supabase.sql`。若顯示「密碼錯誤」但確定密碼正確，代表還沒寫入雜湊值（見 §11.1 第 7 步的第 3 點）。 |
+| 「立即更新」按鈕是灰的 | 看按鈕下方的訊息：① 距上次成功更新不滿 20 分鐘（顯示倒數）；② GitHub 上有尚未完成的手動更新（「已觸發更新，正在等待完成」，最多 10 分鐘）；③ 讀不到 `pipeline_status` 或 GitHub API（顯示原因）；④「尚未設定 GH_REPO / GH_DISPATCH_TOKEN」：Vercel 沒有這兩個變數、類型選了 Secret、或改完沒有 Redeploy；本機則是 `.env.local` 沒填。排程不受影響。 |
+| 「尚未設定 VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY」 | Vercel 要在 Environment Variables 設定並 Redeploy（`VITE_` 變數是建置時打包進去的）；本機要建立 `forecast/web/.env.local`（不會被 commit）。 |
+| 儀表板縣市數是 44 而不是 22 | 資料表裡有新舊兩批時段重疊的資料（氣象署第一個時段會隨時間縮短）。前端只取最新一批，因此需要 workflow 至少成功寫入一次帶 `updated_at` 的資料。 |
+| `updated_at` 顯示 UTC | 於 Supabase 執行 `sql/init_supabase.sql`（含 `ALTER DATABASE ... SET timezone`），並用新的連線／SQL 分頁查詢。 |
+| 本機 `npm run dev` 停止後再啟動說 5173 埠被占用 | 背景的 node 行程還在。找出占用 5173 的行程結束它（PowerShell：`Get-NetTCPConnection -LocalPort 5173`）。 |
+| Actions 日誌出現「ubuntu-latest 將於 2026-10-19 遷移到 Ubuntu 26」 | 只是 GitHub 的通知，不是錯誤，不影響目前執行。遷移後若排程出現安裝或相容性問題，可先把 workflow 的 `runs-on` 暫時固定成 `ubuntu-24.04`。（先前的「Node.js 20 deprecated」警告已在 v1.12.6 升級 `checkout@v7`、`setup-python@v7` 後消除。） |
+| Streamlit Cloud 上出現 `ModuleNotFoundError`（`streamlit` 分支） | Streamlit Cloud 只在主程式目錄與 repo 根目錄找 `requirements.txt`，因此放在 repo 根目錄。 |

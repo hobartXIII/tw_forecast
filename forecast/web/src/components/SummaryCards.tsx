@@ -2,6 +2,8 @@
 
 - 每 CAROUSEL_INTERVAL_MS 自動換下一張；滑鼠移上去、以鍵盤（Tab）把焦點移進輪播或手指觸碰時暫停。
   滑鼠點擊箭頭後焦點會留在按鈕上，這不算暫停（只看 :focus-visible），否則按過一次就再也不會自動換頁。
+  「滑鼠移上去」只認真的滑鼠（pointerType === "mouse"）：手機點一下後瀏覽器會補送模擬的 mouseenter、卻不送 mouseleave，
+  若用 onMouseEnter，點過箭頭或圓點後就會一直暫停；觸控的暫停只由 touching（手指按著時）負責。
   系統設定「減少動態效果」時照樣換頁，只是取消淡入與滑動動畫（CSS）；Windows 關閉「動畫效果」也會被瀏覽器視為減少動態效果。
 - 左右箭頭與圓點疊在卡片裡（左右兩側、底部）；手機可左右滑動（垂直滑動照常捲動頁面）。
 - 四張卡片都留在頁面上、疊在同一格，切換時淡入並從換頁方向輕微滑入；看不到的卡片對螢幕閱讀器隱藏。
@@ -85,8 +87,8 @@ export function SummaryCards({ cards, title = "" }: { cards: CardModel[]; title?
       className="carousel"
       aria-roledescription="輪播"
       aria-label={title ? `重點摘要：${title}` : "重點摘要"}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
+      onPointerEnter={(e) => { if (e.pointerType === "mouse") setHovered(true); }}
+      onPointerLeave={(e) => { if (e.pointerType === "mouse") setHovered(false); }}
       onFocus={(e) => { if (keyboardFocus(e.target)) setFocused(true); }}
       onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setFocused(false); }}
       onTouchStart={(e) => {

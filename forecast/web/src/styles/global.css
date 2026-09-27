@@ -18,11 +18,10 @@
   --error-text: #7d1a1a;
   --success-bg: rgba(33, 195, 84, 0.12);
   --success-text: #135c2a;
-  /* 玻璃：半透明底、亮邊框、柔和陰影；背後要有色彩變化才看得出模糊 */
-  --glass-bg: rgba(255, 255, 255, 0.55);
+  /* 透明玻璃：淡淡的半透明底、亮邊框、柔和陰影，背後不模糊（背景與深色的粒子直接透出來） */
+  --glass-bg: rgba(255, 255, 255, 0.28);
   --glass-border: rgba(255, 255, 255, 0.75);
   --glass-shadow: rgba(90, 70, 40, 0.14);
-  --glass-blur: 14px;
   /* 背景：由左（淡米白）到右（淡天空藍）的線性漸層加三個淡光暈（淡青綠、天藍、淡紫；原本的暖橘已換掉） */
   --bg-left: #f7f5f0;
   --bg-right: #eaf3f8;
@@ -53,7 +52,7 @@
   --success-bg: rgba(61, 213, 109, 0.2);
   --success-text: #c2f5d0;
   /* 深色：純色底加三個較濃的彩色光暈；光暈要濃一點才看得出來 */
-  --glass-bg: rgba(255, 255, 255, 0.07);
+  --glass-bg: rgba(255, 255, 255, 0.035);
   --glass-border: rgba(255, 255, 255, 0.16);
   --glass-shadow: rgba(0, 0, 0, 0.4);
   --bg-left: #12141c;
@@ -145,8 +144,6 @@ body::before {
   background: var(--glass-bg);
   border: 1px solid var(--glass-border);
   box-shadow: 0 8px 32px var(--glass-shadow);
-  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(140%);
-  backdrop-filter: blur(var(--glass-blur)) saturate(140%);
 }
 
 /* 左右留白：原本是「內容最寬 1200px 置中 + 16px」，兩側各 (100vw - 1200px) / 2 + 16px；
@@ -183,8 +180,6 @@ button {
   color: var(--text);
   cursor: pointer;
   box-shadow: 0 2px 10px var(--glass-shadow);
-  -webkit-backdrop-filter: blur(8px);
-  backdrop-filter: blur(8px);
   transition: border-color 0.2s ease, color 0.2s ease;
 }
 /* 滑鼠移上的效果只給有滑鼠的裝置；觸控螢幕點過之後 :hover 會一直留著，看起來像被選取 */
@@ -208,8 +203,6 @@ button:disabled { opacity: 0.55; cursor: not-allowed; }
   border-radius: 16px;
   padding: 12px 16px;
   box-shadow: 0 8px 32px var(--glass-shadow);
-  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(140%);
-  backdrop-filter: blur(var(--glass-blur)) saturate(140%);
 }
 .info-lines b { font-weight: 400; white-space: nowrap; } /* 不用粗體；時間不拆開，放不下時整段換到下一行 */
 .info-toggle { display: none; } /* 手機版才顯示（見檔尾） */
@@ -225,16 +218,25 @@ button:disabled { opacity: 0.55; cursor: not-allowed; }
 .filters { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 12px 0; }
 .filters label, .field { display: flex; flex-direction: column; gap: 4px; font-size: 0.9rem; }
 .field { margin: 8px 0 12px; max-width: 420px; }
+/* 下拉選單的外觀與手機版「更新資訊」框一致：16px 圓角、左右 16px 內距、右側的 ▾ 箭頭。
+   原生箭頭各瀏覽器長得不同，用 appearance: none 關掉，改由外層 .select-wrap 的 ::after 畫（<select> 本身不能加 ::after）；
+   箭頭不接收點擊，點在箭頭上一樣會打開選單。選單打開時沒有各瀏覽器通用的偵測方式，所以箭頭不旋轉 */
+.select-wrap { position: relative; display: block; }
+.select-wrap::after {
+  content: "▾"; position: absolute; right: 16px; top: 50%; transform: translateY(-50%);
+  color: var(--text); pointer-events: none;
+}
 select {
   font: inherit;
-  padding: 8px 10px;
-  border-radius: 8px;
+  width: 100%;
+  -webkit-appearance: none;
+  appearance: none;
+  padding: 8px 40px 8px 16px; /* 右側留給箭頭 */
+  border-radius: 16px;
   border: 1px solid var(--glass-border);
   background: var(--glass-bg);
   color: var(--text);
   box-shadow: 0 2px 10px var(--glass-shadow);
-  -webkit-backdrop-filter: blur(8px);
-  backdrop-filter: blur(8px);
 }
 option { background: var(--surface); color: var(--text); } /* 展開的選項清單不透明，才讀得清楚 */
 .radio-row { display: flex; gap: 18px; margin: 4px 0; }
@@ -298,8 +300,6 @@ option { background: var(--surface); color: var(--text); } /* 展開的選項清
   width: 7px; height: 7px; padding: 0; border-radius: 50%;
   border: none; box-shadow: none;
   background: color-mix(in srgb, var(--text) 25%, transparent);
-  -webkit-backdrop-filter: none;
-  backdrop-filter: none;
 }
 @media (hover: hover) {
   .carousel-arrow:hover:not(:disabled) { opacity: 1; }
@@ -360,8 +360,6 @@ option { background: var(--surface); color: var(--text); } /* 展開的選項清
   height: 34px; padding: 0 14px; border-radius: 999px;
   border: 1px solid transparent; background: transparent;
   box-shadow: none;
-  -webkit-backdrop-filter: none;
-  backdrop-filter: none;
   transition: background-color 0.2s ease, border-color 0.2s ease;
 }
 @media (hover: hover) {
@@ -515,7 +513,6 @@ option { background: var(--surface); color: var(--text); } /* 展開的選項清
   .info-toggle {
     display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%;
     padding: 0; border: none; background: none; box-shadow: none; color: var(--text); text-align: left;
-    -webkit-backdrop-filter: none; backdrop-filter: none;
   }
   .info-caret { transition: transform 0.2s ease; }
   .info-toggle[aria-expanded="true"] .info-caret { transform: rotate(180deg); }
