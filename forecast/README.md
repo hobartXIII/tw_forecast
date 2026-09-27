@@ -4,16 +4,16 @@
 | :--- | :--- |
 | 作業 | HW1 |
 | 作者 | [CHIU,YUNG-CHIA](https://github.com/hobartXIII) |
-| 部署網址 | <https://tw-forecast.vercel.app/>（Vercel 版，正式）<br><https://twforecast-gxbrpkkigluvdh48shimyo.streamlit.app/>（Streamlit 版，`streamlit` 分支，備用） |
+| 部署網址 | <https://tw-forecast.vercel.app/>（Vercel 版，正式）<br><https://twforecast-gxbrpkkigluvdh48shimyo.streamlit.app/>（Streamlit 版，`streamlit` 分支，備用；超過 12 小時沒人使用會休眠，按畫面上的按鈕即可喚醒） |
 | 原始碼 | <https://github.com/hobartXIII/tw_forecast/tree/main/forecast> |
 | 相關文件 | [SPECIFICATION.md](SPECIFICATION.md)（完整規格、版本紀錄、環境建置、部署與常見問題）、[ARCHITECTURE.md](ARCHITECTURE.md)（檔案功能對照、測試指令）、[VERCEL_PLAN.md](VERCEL_PLAN.md)（前端改寫到 Vercel 的規劃與過程） |
 
 <!-- QR code 各放一格、左右加全形空白，彼此隔開才好掃描（GitHub 會過濾 CSS，格子內距也固定，只能用空白撐開） -->
 <table align="center">
   <tr>
-    <td align="center">&emsp;&emsp;<img src="assets/deploy_qrcode_vercel.png" alt="部署網址（Vercel 版）QR code" width="150">&emsp;&emsp;<br><sub>部署網址（Vercel 版，正式）</sub></td>
-    <td align="center">&emsp;&emsp;<img src="assets/deploy_qrcode.png" alt="部署網址（Streamlit 版）QR code" width="150">&emsp;&emsp;<br><sub>部署網址（Streamlit 版，備用）</sub></td>
-    <td align="center">&emsp;&emsp;<img src="assets/github_qrcode.png" alt="GitHub Repo QR code" width="150">&emsp;&emsp;<br><sub>GitHub Repo</sub></td>
+    <td align="center" valign="top" width="33%">&emsp;<img src="assets/deploy_qrcode_vercel.png" alt="正式網址（Vercel）QR code" width="150">&emsp;<br><sub>正式網址（Vercel）</sub></td>
+    <td align="center" valign="top" width="33%">&emsp;<img src="assets/deploy_qrcode.png" alt="備用網址（Streamlit）QR code" width="150">&emsp;<br><sub>備用網址（Streamlit）</sub></td>
+    <td align="center" valign="top" width="33%">&emsp;<img src="assets/github_qrcode.png" alt="GitHub 原始碼 QR code" width="150">&emsp;<br><sub>GitHub 原始碼</sub></td>
   </tr>
 </table>
 
@@ -27,7 +27,7 @@
 
 | 階段 | 重點 |
 | :--- | :--- |
-| 需求釐清 | 釐清要做什麼：從問AI開始(煥哥從氣象資料到互動式天氣預報應用)、資料來源（氣象署一週預報）、呈現方式（下拉式清單、氣溫與降雨資訊、地圖、趨勢圖）、主動通知的條件，以及全部使用免費服務 |
+| 需求釐清 | 釐清要做什麼：從問AI開始(煥哥-從氣象資料到互動式天氣預報應用)、資料來源（氣象署一週預報）、呈現方式（下拉式清單、氣溫與降雨資訊、地圖、趨勢圖）、主動通知的條件，以及全部使用免費服務 |
 | 確定架構 | 讀寫分離：GitHub Actions 排程抓資料寫入 Supabase，Streamlit 只讀；撰寫規格書 `SPECIFICATION.md` |
 | 實作 Streamlit 版 | 排程每 3 小時、地區／縣市篩選、Telegram 推播、告警設定存資料庫並以管理者密碼保護、玻璃擬態與深淺色、日期查詢、手機版選單 |
 | 重構 | 程式碼移到 `src/tw_forecast/`，拆成 OOP 類別與純函式；正式程式、測試（`tests/`）、真實連線檢查（`checks/`）分開；前後輸出逐項比對一致 |
@@ -172,10 +172,12 @@
 | :--- | :--- | :--- |
 | 開發語言 | 全部 Python，可沿用 pandas、Altair、folium 與現有測試 | 前端需改寫成 JavaScript／TypeScript（例如 Next.js）；Streamlit 需要常駐的 WebSocket 伺服器，無法部署在 Vercel |
 | 開發速度 | 視熟悉度而定：熟 Python 的人上手快，元件現成，不用寫 API 與前端狀態管理；但它特有的「每次互動整支腳本重跑」、`session_state`、快取機制較少人熟悉，資源也較少 | 視熟悉度而定：HTML／React／TypeScript 是主流技能，資料與範例多，熟前端的人反而較快；但要自己處理版面、狀態、API 路由 |
-| 首次載入 | 一段時間沒有流量會休眠，下一位訪客要等喚醒；每個連線都要建立 WebSocket | 靜態頁面走全球 CDN，載入快，沒有休眠問題 |
+| 首次載入（休眠與喚醒） | 連續 12 小時沒有人造訪就會休眠；下一位訪客會先看到「This app has gone to sleep」畫面，須按「Yes, get this app back up!」並等待重新啟動才能使用（任何訪客都能喚醒）；每個連線都要建立 WebSocket | 頁面是 CDN 上的靜態檔，沒有要喚醒的伺服器，不會休眠，隨時打開都立即顯示；只有「立即更新」用的 Function 久未使用時，第一次呼叫可能稍慢（冷啟動），不影響資料顯示 |
 | 互動模型 | 每次互動整支腳本重跑，靠 `st.cache_*`、`st.fragment` 優化 | 只更新變動的元件，瀏覽器端互動不需回伺服器 |
 | 版面與樣式 | 受限於內建元件；玻璃擬態、頁籤等效果依賴 Streamlit 內部 CSS 選擇器，升級版本可能失效 | 完全自訂，手機版與深色主題可精細控制 |
 | 維護成本 | 一種語言、一套測試 | Python（後端）與 TypeScript（前端）兩套語言、兩套測試 |
+
+> 本作業的 Streamlit 備用網址若顯示休眠畫面，按畫面上的按鈕即可喚醒；正式網址（Vercel）不會有此情況。
 
 **當初的結論**：個人使用、小流量的儀表板，對熟 Python 的開發者來說 Streamlit 開發快、能沿用 Python 程式與測試，是合適的選擇；若要公開推廣、在意首次載入速度或更細緻的手機版介面，再考慮改寫到 Vercel。
 
